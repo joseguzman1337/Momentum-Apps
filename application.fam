@@ -23,6 +23,6 @@ App(
     # Optional values
     fap_version=(1, 0),
     fap_description="Voltage (VRI) calculations",
-    fap_author="HappyAmos",
+    fap_author="Andrew Diamond",
     fap_weburl="https://github.com/HappyAmos/",
 )
