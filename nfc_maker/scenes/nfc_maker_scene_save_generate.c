@@ -35,7 +35,7 @@ static void nfc_maker_scene_save_generate_populate_ndef_buffer(NfcMaker* app) {
 #ifdef FW_ORIGIN_Momentum
             "MomentumFW"
 #else
-            "FlipperZero",
+            "FlipperZero"
 #endif
             "//%s//EN\r\n",
             version_get_version(NULL));
