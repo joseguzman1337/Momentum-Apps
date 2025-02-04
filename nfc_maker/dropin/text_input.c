@@ -1,3 +1,4 @@
+#ifndef FW_ORIGIN_Momentum
 #include "text_input.h"
 #include <gui/elements.h>
 #if __has_include(<assets_icons.h>)
@@ -804,3 +805,4 @@ void text_input_set_header_text(TextInput* text_input, const char* text) {
     furi_check(text_input);
     with_view_model(text_input->view, TextInputModel * model, { model->header = text; }, true);
 }
+#endif
