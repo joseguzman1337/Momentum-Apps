@@ -12,10 +12,20 @@ static uint32_t callback_exit_app(void *context)
     return VIEW_NONE; // Return VIEW_NONE to exit the app
 }
 
+void *global_app;
+void flip_world_show_submenu()
+{
+    FlipWorldApp *app = (FlipWorldApp *)global_app;
+    if (app->submenu) {
+        view_dispatcher_switch_to_view(app->view_dispatcher, FlipWorldViewSubmenu);
+    }
+}
+
 // Function to allocate resources for the FlipWorldApp
 FlipWorldApp *flip_world_app_alloc()
 {
     FlipWorldApp *app = (FlipWorldApp *)malloc(sizeof(FlipWorldApp));
+    global_app = app;
 
     Gui *gui = furi_record_open(RECORD_GUI);
 
@@ -24,13 +34,13 @@ FlipWorldApp *flip_world_app_alloc()
     {
         return NULL;
     }
-    view_dispatcher_set_custom_event_callback(app->view_dispatcher, flip_world_custom_event_callback);
+    view_dispatcher_set_custom_event_callback(app->view_dispatcher, custom_event_callback);
     // Main view
-    if (!easy_flipper_set_view(&app->view_loader, FlipWorldViewLoader, flip_world_loader_draw_callback, NULL, callback_to_submenu, &app->view_dispatcher, app))
+    if (!easy_flipper_set_view(&app->view_loader, FlipWorldViewLoader, loader_draw_callback, NULL, callback_to_submenu, &app->view_dispatcher, app))
     {
         return NULL;
     }
-    flip_world_loader_init(app->view_loader);
+    loader_init(app->view_loader);
     if (!easy_flipper_set_widget(&app->widget_result, FlipWorldViewWidgetResult, "", callback_to_submenu, &app->view_dispatcher))
     {
         return NULL;
@@ -42,7 +52,7 @@ FlipWorldApp *flip_world_app_alloc()
         return NULL;
     }
     submenu_add_item(app->submenu, "Play", FlipWorldSubmenuIndexRun, callback_submenu_choices, app);
-    submenu_add_item(app->submenu, "About", FlipWorldSubmenuIndexAbout, callback_submenu_choices, app);
+    submenu_add_item(app->submenu, "About", FlipWorldSubmenuIndexMessage, callback_submenu_choices, app);
     submenu_add_item(app->submenu, "Settings", FlipWorldSubmenuIndexSettings, callback_submenu_choices, app);
     //
 
@@ -78,7 +88,7 @@ void flip_world_app_free(FlipWorldApp *app)
     if (app->view_loader)
     {
         view_dispatcher_remove_view(app->view_dispatcher, FlipWorldViewLoader);
-        flip_world_loader_free_model(app->view_loader);
+        loader_free_model(app->view_loader);
         view_free(app->view_loader);
     }
 
@@ -91,6 +101,5 @@ void flip_world_app_free(FlipWorldApp *app)
     furi_record_close(RECORD_GUI);
 
     // free the app
-    if (app)
-        free(app);
+    if (app) free(app);
 }

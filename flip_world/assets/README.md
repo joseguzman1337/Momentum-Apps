@@ -1,7 +1,6 @@
-The first open-world multiplayer game for the Flipper Zero, best played with the VGM.
+The first open-world multiplayer game for the Flipper Zero, best played with the VGM. Here's a video tutorial: https://www.youtube.com/watch?v=Qp7qmYMfdUA
 
 ## Requirements
-
 - WiFi Developer Board, Raspberry Pi, or ESP32 device with the FlipperHTTP flash: https://github.com/jblanked/FlipperHTTP
 - 2.4 GHz WiFi access point
 
@@ -13,7 +12,7 @@ FlipWorld and FlipSocial are connected. Your login information is the same in bo
 
 - **WiFi**: Enter your SSID and password to connect to your 2.4 GHz network.
 - **User**: Add or update your username and password (this is the same login information as your FlipSocial account).
-- **Game**: Install the Official World Pack, set your FPS (30, 60, 120, or 240), and select whether you want the screen backlight to always be on, the sound to be on, and the vibration to be on.
+- **Game**: Install the Official World Pack, choose your weapon, set your FPS (30, 60, 120, or 240), and select whether you want the screen backlight to always be on, the sound to be on, and the vibration to be on.
 
 **Controls**
 
@@ -21,7 +20,10 @@ FlipWorld and FlipSocial are connected. Your login information is the same in bo
 - **Press/Hold RIGHT**: Turn right if not already facing right, then walk right if the button is still pressed.
 - **Press/Hold UP**: Walk up.
 - **Press/Hold DOWN**: Walk down.
-- **Press/Hold OK**: Attack/Teleport (set to attack until all enemies are defeated).
+- **Press OK**: Interact/Attack/Teleport (set to attack until all enemies are defeated and interact when colliding with NPCs)
+- **HOLD OK**: In-Game Menu.
+- **Press BACK**: Leave the menu.
+- **HOLD BACK**: Exit the game.
 
 **Player Attributes**
 
@@ -42,7 +44,11 @@ Enemies have similar attributes to players but do not have XP or health regenera
 
 If an enemy attacks you, your health decreases by the enemy's strength (attack power). Additionally, if an enemy defeats you, your XP decreases by the enemy's strength. Conversely, when you successfully attack an enemy, you gain health equal to 10% of the enemy's strength and increase your XP by the enemy's full strength.
 
-An enemy attack registers if the enemy is facing you and collides with you. However, to attack an enemy successfully, the enemy must be facing away from you, and you must collide with them while pressing `OK`.
+An enemy attack registers if the enemy is facing you and collides with you. However, to attack an enemy successfully, the enemy must be facing away from you, and you must collide with them while pressing "OK".
+
+**NPCs**
+
+NPCs are friendly characters that players can interact with. Currently, you can interact with them by clicking "OK" while colliding with them.
 
 ## Short Tutorial
 
@@ -64,12 +70,16 @@ An enemy attack registers if the enemy is facing you and collides with you. Howe
 
 **v0.4**
 - New game features
+- Stability patch
+- World expansion
 
 **v0.5**
-- ???
+- Stability patch
+- NPCs
 
 **v0.6**
-- ???
+- New game features
+- Custom Controller Support
 
 **v0.7**
 - ???
