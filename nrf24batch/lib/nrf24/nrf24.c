@@ -37,7 +37,11 @@ void nrf24_deinit() {
     }
 }
 
-void nrf24_spi_trx(const FuriHalSpiBusHandle* handle, uint8_t* tx, uint8_t* rx, uint8_t size) {
+void nrf24_spi_trx(
+    const FuriHalSpiBusHandle* handle,
+    uint8_t* tx,
+    uint8_t* rx,
+    uint8_t size) {
     furi_hal_gpio_write(handle->cs, false);
     furi_hal_spi_bus_trx(handle, tx, rx, size, nrf24_TIMEOUT);
     furi_hal_gpio_write(handle->cs, true);
@@ -50,11 +54,7 @@ uint8_t nrf24_write_reg(const FuriHalSpiBusHandle* handle, uint8_t reg, uint8_t 
     return buf[0];
 }
 
-uint8_t nrf24_write_buf_reg(
-    const FuriHalSpiBusHandle* handle,
-    uint8_t reg,
-    uint8_t* data,
-    uint8_t size) {
+uint8_t nrf24_write_buf_reg(const FuriHalSpiBusHandle* handle, uint8_t reg, uint8_t* data, uint8_t size) {
     uint8_t buf[size + 1];
     buf[0] = W_REGISTER | (REGISTER_MASK & reg);
     memcpy(&buf[1], data, size);
@@ -63,8 +63,7 @@ uint8_t nrf24_write_buf_reg(
     return buf[0];
 }
 
-uint8_t
-    nrf24_read_reg(const FuriHalSpiBusHandle* handle, uint8_t reg, uint8_t* data, uint8_t size) {
+uint8_t nrf24_read_reg(const FuriHalSpiBusHandle* handle, uint8_t reg, uint8_t* data, uint8_t size) {
     uint8_t buf[size + 1];
     memset(buf, 0, size + 1);
     buf[0] = R_REGISTER | (REGISTER_MASK & reg);
@@ -74,7 +73,7 @@ uint8_t
 }
 
 uint8_t nrf24_read_register(const FuriHalSpiBusHandle* handle, uint8_t reg) {
-    uint8_t buf[] = {R_REGISTER | (REGISTER_MASK & reg), 0};
+    uint8_t buf[] = { R_REGISTER | (REGISTER_MASK & reg), 0 };
     nrf24_spi_trx(handle, buf, buf, 2);
     return buf[1];
 }
@@ -207,11 +206,7 @@ uint8_t nrf24_set_packetlen(const FuriHalSpiBusHandle* handle, uint8_t len) {
 
 // packet_size: 0 - dyn payload (read from PL_WID), 1 - read from pipe size, >1 - override
 // Return STATUS reg + additional: RX_DR - new data available, 0x80 - NRF24 hardware error
-uint8_t nrf24_rxpacket(
-    const FuriHalSpiBusHandle* handle,
-    uint8_t* packet,
-    uint8_t* ret_packetsize,
-    uint8_t packet_size) {
+uint8_t nrf24_rxpacket(const FuriHalSpiBusHandle* handle, uint8_t* packet, uint8_t* ret_packetsize, uint8_t packet_size) {
     uint8_t status = 0;
     uint8_t buf[33]; // 32 max payload size + 1 for command
 
@@ -250,8 +245,7 @@ uint8_t nrf24_rxpacket(
 }
 
 // Return 0 when error
-uint8_t
-    nrf24_txpacket(const FuriHalSpiBusHandle* handle, uint8_t* payload, uint8_t size, bool ack) {
+uint8_t nrf24_txpacket(const FuriHalSpiBusHandle* handle, uint8_t* payload, uint8_t size, bool ack) {
     uint8_t status = 0;
     uint8_t buf[size + 1];
     buf[0] = ack ? W_TX_PAYLOAD : W_TX_PAYLOAD_NOACK;
