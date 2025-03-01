@@ -26,7 +26,8 @@ typedef struct {
     IconAnimation* icon;
     FlippPomodoroState* state;
     size_t scroll_counter;
-    char* current_hint;
+    char *current_hint;
+    uint32_t hint_open_timestamp;
 } FlippPomodoroTimerViewModel;
 
 static const Icon* stage_background_image[] = {
@@ -92,12 +93,16 @@ static void
         flipp_pomodoro__current_stage_label(state));
 }
 
-static void
-    flipp_pomodoro_view_timer_draw_hint(Canvas* canvas, FlippPomodoroTimerViewModel* model) {
-    size_t MAX_SCROLL_COUNTER = 300;
-    uint8_t SCROLL_DELAY_FRAMES = 3;
+static void flipp_pomodoro_view_timer_draw_hint(Canvas *canvas, FlippPomodoroTimerViewModel *model)
+{
+    uint8_t FRAMES_PER_SECOND = 3;
+    uint8_t HINT_MAX_DURATION_SECONDS = 30;
+    uint8_t SCROLL_DELAY_SECONDS = 2;
 
-    if(model->scroll_counter >= MAX_SCROLL_COUNTER || model->current_hint == NULL) {
+    uint8_t hint_duration = time_now() - model->hint_open_timestamp;
+
+    if (hint_duration > HINT_MAX_DURATION_SECONDS || model->current_hint == NULL)
+    {
         return;
     }
 
@@ -111,17 +116,10 @@ static void
 
     furi_string_printf(displayed_hint_string, "%s", model->current_hint);
 
-    size_t perfect_duration = furi_string_size(displayed_hint_string) * 1.5;
 
-    if(model->scroll_counter > perfect_duration) {
-        model->scroll_counter = MAX_SCROLL_COUNTER;
-        furi_string_free(displayed_hint_string);
-        return;
-    }
+    size_t scroll_offset_base_max = (hint_duration < SCROLL_DELAY_SECONDS) ? 0 : ((hint_duration - SCROLL_DELAY_SECONDS) * FRAMES_PER_SECOND);
 
-    size_t scroll_offset = (model->scroll_counter < SCROLL_DELAY_FRAMES) ?
-                               0 :
-                               model->scroll_counter - SCROLL_DELAY_FRAMES;
+    size_t scroll_offset = (scroll_offset_base_max <= model->scroll_counter ? scroll_offset_base_max : model->scroll_counter + 1);
 
     canvas_set_color(canvas, ColorWhite);
     canvas_draw_box(canvas, hint_x, hint_y, hint_width + 3, hint_height);
@@ -138,7 +136,7 @@ static void
         scroll_offset,
         true);
     furi_string_free(displayed_hint_string);
-    model->scroll_counter++;
+    model->scroll_counter = scroll_offset;
 }
 
 static void flipp_pomodoro_view_timer_draw_callback(Canvas* canvas, void* _model) {
@@ -200,6 +198,7 @@ void flipp_pomodoro_view_timer_display_hint(View* view, char* hint) {
         {
             model->scroll_counter = 0;
             model->current_hint = hint;
+            model->hint_open_timestamp = time_now();
         },
         true);
 }
