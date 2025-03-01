@@ -207,10 +207,6 @@ int32_t xremote_app(void* p) {
 
     furi_hal_power_suppress_charge_enter();
 
-    Storage* storage = furi_record_open(RECORD_STORAGE);
-    storage_common_mkdir(storage, XREMOTE_APP_FOLDER);
-    furi_record_close(RECORD_STORAGE);
-
     if(strcmp(subghz_txrx_radio_device_get_name(app->subghz->txrx), "cc1101_ext") != 0) {
         InfraredSettings settings = {0};
         infrared_settings_load(&settings);
