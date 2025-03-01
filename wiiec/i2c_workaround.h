@@ -19,7 +19,7 @@ void  furi_hal_i2c_acquire (const FuriHalI2cBusHandle* handle)
     // 5. Activate bus
     handle->bus->callback(handle->bus, FuriHalI2cBusEventActivate);
     // 6. Activate handle
-    handle->callback(handle, FuriHalI2cBusHandleEventActivate);
+    handle->callback(handle, const FuriHalI2cBusHandleEventActivate);
 }
 
 void  furi_hal_i2c_release (const FuriHalI2cBusHandle* handle)
@@ -27,7 +27,7 @@ void  furi_hal_i2c_release (const FuriHalI2cBusHandle* handle)
     // Ensure that current handle is our handle
     furi_check(handle->bus->current_handle == handle);
     // 6. Deactivate handle
-    handle->callback(handle, FuriHalI2cBusHandleEventDeactivate);
+    handle->callback(handle, const FuriHalI2cBusHandleEventDeactivate);
     // 5. Deactivate bus
     handle->bus->callback(handle->bus, FuriHalI2cBusEventDeactivate);
     // 3,4. Reset current handle
