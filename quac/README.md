@@ -48,7 +48,7 @@ SubGhz signals that are dynamic (i.e. have rolling codes / counters) will be re-
 
 ## Signal Organization
 
-The key to organizing your Quac! interface is to organize your `/ext/apps_quac` folder structure. The UI is derived directly from the filesystem structure. Every individual file/signal is given a label on screen. And every folder/directory is a logical group of more files/folders. Selecting a group in the UI will show you the contents of that folder. There is no limit on the number of actions or folders - nest as deep as you want!
+The key to organizing your Quac! interface is to organize your `/ext/apps_data/quac` folder structure. The UI is derived directly from the filesystem structure. Every individual file/signal is given a label on screen. And every folder/directory is a logical group of more files/folders. Selecting a group in the UI will show you the contents of that folder. There is no limit on the number of actions or folders - nest as deep as you want!
 
 You can organize your files by device type, or by function. For example, you may have a folder of "TV" actions, which correspond to Channel Up, Channel Down, Volume Up, Volume Down, etc. Or you may have a "Work" folder, which contains files/actions that correspond to Parking Gate, Garage Door, Lobby Entrance.
 
