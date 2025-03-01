@@ -67,11 +67,7 @@ uint8_t nrf24_write_reg(const FuriHalSpiBusHandle* handle, uint8_t reg, uint8_t 
  *
  * @return     device status
  */
-uint8_t nrf24_write_buf_reg(
-    const FuriHalSpiBusHandle* handle,
-    uint8_t reg,
-    uint8_t* data,
-    uint8_t size);
+uint8_t nrf24_write_buf_reg(const FuriHalSpiBusHandle* handle, uint8_t reg, uint8_t* data, uint8_t size);
 
 /** Read device register
  *
@@ -81,8 +77,7 @@ uint8_t nrf24_write_buf_reg(
  *
  * @return     device status
  */
-uint8_t
-    nrf24_read_reg(const FuriHalSpiBusHandle* handle, uint8_t reg, uint8_t* data, uint8_t size);
+uint8_t nrf24_read_reg(const FuriHalSpiBusHandle* handle, uint8_t reg, uint8_t* data, uint8_t size);
 
 /** Power up the radio for operation
  * 
@@ -270,11 +265,8 @@ uint8_t nrf24_set_dst_mac(const FuriHalSpiBusHandle* handle, uint8_t* mac, uint8
  * 
  * @return     device status
  */
-uint8_t nrf24_rxpacket(
-    const FuriHalSpiBusHandle* handle,
-    uint8_t* packet,
-    uint8_t* packetsize,
-    bool full);
+uint8_t
+    nrf24_rxpacket(const FuriHalSpiBusHandle* handle, uint8_t* packet, uint8_t* packetsize, bool full);
 
 /** Sends TX packet
  *
@@ -285,8 +277,7 @@ uint8_t nrf24_rxpacket(
  * 
  * @return     device status
  */
-uint8_t
-    nrf24_txpacket(const FuriHalSpiBusHandle* handle, uint8_t* payload, uint8_t size, bool ack);
+uint8_t nrf24_txpacket(const FuriHalSpiBusHandle* handle, uint8_t* payload, uint8_t size, bool ack);
 
 /** Configure the radio
  * This is not comprehensive, but covers a lot of the common configuration options that may be changed
