@@ -292,15 +292,14 @@ void input_play_screen(void* data, InputKey key, InputType type) {
                         }
                     }
                     if(can_quick_solve) return;
-                }
-                //try to place hand
-                else {
-                    Card* last = list_peek_back(tbl);
-                    //place back from where you picked up
-                    if(is_picked_from(state->selected[0], 1)) {
-                        while(state->hand->count) {
-                            list_push_back(list_pop_front(state->hand), tbl);
-                        }
+                } else if (state->selected[0] == 1 && state->selected[1] == 0) {
+                    //pick from waste
+                    if (state->hand->count == 0 && state->waste->count > 0) {
+                        list_push_back(list_pop_back(state->waste), state->hand);
+                        set_picked_from(1, 0);
+                        return;
+                    } else if (is_picked_from(1, 0)) { //put back to waste
+                        list_push_back(list_pop_back(state->hand), state->waste);
                         reset_picked();
                         return;
                     }
