@@ -370,7 +370,7 @@ bool totp_scene_app_settings_handle_event(
         case InputKeyRight:
             if(scene_state->selected_control == HoursInput) {
                 totp_roll_value_int8_t(
-                    &scene_state->tz_offset_hours, 1, -12, 12, RollOverflowBehaviorStop);
+                    &scene_state->tz_offset_hours, 1, -12, 14, RollOverflowBehaviorStop);
             } else if(scene_state->selected_control == MinutesInput) {
                 totp_roll_value_uint8_t(
                     &scene_state->tz_offset_minutes, 15, 0, 45, RollOverflowBehaviorRoll);
@@ -421,7 +421,7 @@ bool totp_scene_app_settings_handle_event(
         case InputKeyLeft:
             if(scene_state->selected_control == HoursInput) {
                 totp_roll_value_int8_t(
-                    &scene_state->tz_offset_hours, -1, -12, 12, RollOverflowBehaviorStop);
+                    &scene_state->tz_offset_hours, -1, -12, 14, RollOverflowBehaviorStop);
             } else if(scene_state->selected_control == MinutesInput) {
                 totp_roll_value_uint8_t(
                     &scene_state->tz_offset_minutes, -15, 0, 45, RollOverflowBehaviorRoll);

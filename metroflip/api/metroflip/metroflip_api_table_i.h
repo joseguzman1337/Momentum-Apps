@@ -9,6 +9,8 @@
 static constexpr auto metroflip_api_table = sort(create_array_t<sym_entry>(
     // metroflip stuff
     API_METHOD(metroflip_exit_widget_callback, void, (GuiButtonType, InputType, void*)),
+    API_METHOD(metroflip_save_widget_callback, void, (GuiButtonType, InputType, void*)),
+    API_METHOD(metroflip_delete_widget_callback, void, (GuiButtonType, InputType, void*)),
     API_METHOD(metroflip_app_blink_start, void, (Metroflip*)),
     API_METHOD(metroflip_app_blink_stop, void, (Metroflip*)),
     API_METHOD(bit_slice_to_dec, int, (const char*, int, int)),
@@ -68,4 +70,12 @@ static constexpr auto metroflip_api_table = sort(create_array_t<sym_entry>(
     API_METHOD(get_ravkav_env_holder_structure, CalypsoApp*, ()),
     API_METHOD(show_ravkav_event_info, void, (RavKavCardEvent*, FuriString*)),
     API_METHOD(show_ravkav_contract_info, void, (RavKavCardContract*, FuriString*)),
-    API_METHOD(show_ravkav_environment_info, void, (RavKavCardEnv*, FuriString*))));
+    API_METHOD(show_ravkav_environment_info, void, (RavKavCardEnv*, FuriString*)),
+
+    API_VARIABLE(I_RFIDDolphinReceive_97x61, Icon),
+    API_VARIABLE(I_icon, Icon),
+    API_METHOD(render_section_header, void, (FuriString*, const char*, uint8_t, uint8_t)),
+    API_METHOD(mosgortrans_parse_transport_block, bool, (const MfClassicBlock*, FuriString*)),
+    API_VARIABLE(I_WarningDolphinFlip_45x42, Icon),
+    API_VARIABLE(I_DolphinDone_80x58, Icon),
+    API_VARIABLE(I_DolphinMafia_119x62, Icon)));

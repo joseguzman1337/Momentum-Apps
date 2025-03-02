@@ -2,6 +2,7 @@
 
 #include <FreeRTOS.h>
 #include <cli/cli.h>
+
 #include <cli/cli_i.h>
 #include <cli/cli_vcp.h>
 #include <loader/loader.h>
@@ -84,11 +85,13 @@ void clicontrol_hijack(size_t tx_size, size_t rx_size) {
     }
 
     // Session switcharooney
-    FuriThreadStdoutWriteCallback prev_stdout = furi_thread_get_stdout_callback();
+    FuriThreadStdoutWriteCallback original_out_cb;
+    void* original_out_ctx;
+    furi_thread_get_stdout_callback(&original_out_cb, &original_out_ctx);
     cli_session_close(global_cli);
     restore_tx_stdout = false;
     cli_session_open(global_cli, session);
-    furi_thread_set_stdout_callback(prev_stdout, NULL);
+    furi_thread_set_stdout_callback(original_out_cb, original_out_ctx);
 
     furi_record_close(RECORD_CLI);
 }
@@ -110,7 +113,7 @@ void clicontrol_unhijack(bool persist) {
 
     if(persist) {
         // Don't trigger a terminal reset as the session switches
-        cli_vcp.is_connected = &furi_hal_version_do_i_belong_here;
+        //cli_vcp.is_connected = &furi_hal_version_do_i_belong_here;
     } else {
         // Send CTRL-C a few times
         char eot = 0x03;
@@ -132,10 +135,13 @@ void clicontrol_unhijack(bool persist) {
     restore_tx_stdout = true; // Ready for next rx call
 
     // Session switcharooney again
-    FuriThreadStdoutWriteCallback prev_stdout = furi_thread_get_stdout_callback();
+    //FuriThreadStdoutWriteCallback prev_stdout = furi_thread_get_stdout_callback();
+    FuriThreadStdoutWriteCallback original_out_cb;
+    void* original_out_ctx;
+    furi_thread_get_stdout_callback(&original_out_cb, &original_out_ctx);
     cli_session_close(global_cli);
     cli_session_open(global_cli, &cli_vcp);
-    furi_thread_set_stdout_callback(prev_stdout, NULL);
+    furi_thread_set_stdout_callback(original_out_cb, original_out_ctx);
     furi_record_close(RECORD_CLI);
 
     // Unblock waiting rx handler, restore old cli_vcp.tx_stdout
