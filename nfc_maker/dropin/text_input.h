@@ -6,6 +6,7 @@
 #pragma once
 
 #ifndef FW_ORIGIN_Momentum
+
 #include <gui/view.h>
 #include <gui/modules/validators.h>
 
@@ -99,4 +100,5 @@ void text_input_set_header_text(TextInput* text_input, const char* text);
 #ifdef __cplusplus
 }
 #endif
+
 #endif

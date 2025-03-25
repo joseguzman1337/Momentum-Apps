@@ -6,7 +6,7 @@
 #include <gui/modules/validators.h>
 #include <gui/view_dispatcher.h>
 #include <gui/scene_manager.h>
-#if __has_include(<assets_icons.h>)
+#ifdef FW_ORIGIN_Momentum
 #include <assets_icons.h>
 #else
 extern const Icon I_DolphinDone_80x58;
@@ -23,7 +23,7 @@ extern const Icon I_WarningDolphinFlip_45x42;
 #include "scenes/nfc_maker_scene.h"
 #include <lib/flipper_format/flipper_format.h>
 #include <toolbox/name_generator.h>
-#if __has_include(<applications/main/nfc/nfc_app_i.h>)
+#if defined(FW_ORIGIN_Momentum) && __has_include(<applications/main/nfc/nfc_app_i.h>)
 #include <applications/main/nfc/nfc_app_i.h>
 #else
 #define NFC_APP_FOLDER    EXT_PATH("nfc")
