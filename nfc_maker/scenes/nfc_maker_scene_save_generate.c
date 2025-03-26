@@ -369,6 +369,68 @@ static void nfc_maker_scene_save_generate_populate_device_mfc(NfcMaker* app, Car
     mf_classic_free(data);
 }
 
+static void nfc_maker_scene_save_generate_populate_device_slix(NfcMaker* app, Card card_type) {
+    SlixData* data = slix_alloc();
+
+    size_t block_count = 0;
+    data->iso15693_3_data->system_info.flags =
+        ISO15693_3_SYSINFO_FLAG_DSFID | ISO15693_3_SYSINFO_FLAG_AFI |
+        ISO15693_3_SYSINFO_FLAG_MEMORY | ISO15693_3_SYSINFO_FLAG_IC_REF;
+    uint8_t uid[8];
+    furi_hal_random_fill_buf(uid, sizeof(uid));
+    uid[0] = 0xE0; // All ISO15693-3 cards must have this as first UID byte
+    uid[1] = 0x04; // NXP manufacturer code
+
+    switch(card_type) {
+    case CardSlix:
+        block_count = 28;
+        uid[2] = 0x01; // ICODE Type
+        uid[3] &= ~(0x03 << 3);
+        uid[3] |= 0x02 << 3; // Type Indicator
+        break;
+    case CardSlixS:
+        block_count = 40;
+        uid[2] = 0x02; // ICODE Type
+        break;
+    case CardSlixL:
+        block_count = 8;
+        uid[2] = 0x03; // ICODE Type
+        break;
+    case CardSlix2:
+        block_count = 80;
+        uid[2] = 0x01; // ICODE Type
+        uid[3] &= ~(0x03 << 3);
+        uid[3] |= 0x01 << 3; // Type Indicator
+        break;
+    default:
+        break;
+    }
+
+    slix_set_uid(data, uid, sizeof(uid));
+    const size_t block_size = SLIX_BLOCK_SIZE;
+    const size_t data_area = block_count * block_size;
+    data->iso15693_3_data->system_info.block_size = block_size;
+    data->iso15693_3_data->system_info.block_count = block_count;
+    simple_array_init(data->iso15693_3_data->block_data, data_area);
+    simple_array_init(data->iso15693_3_data->block_security, block_count);
+
+    uint8_t* blocks = simple_array_get_data(data->iso15693_3_data->block_data);
+    memcpy(&blocks[1 * block_size], app->ndef_buffer, app->ndef_size);
+
+    // https://community.nxp.com/pwmxy87654/attachments/pwmxy87654/nfc/7583/1/EEOL_2011FEB16_EMS_RFD_AN_01.pdf
+    // Format Capability Container
+    blocks[0] = 0xE1; // NFC Magic Number
+    blocks[1] = 0x40; // 0x4X: Version 1, 0xX0: Full R/W access
+    blocks[2] = data_area / 8; // Data Area Size: Total byte size / 8
+    blocks[3] = 0x01; // MBREAD: Supports Multiple Block Read command
+
+    free(app->ndef_buffer);
+    app->ndef_buffer = NULL;
+
+    nfc_device_set_data(app->nfc_device, NfcProtocolSlix, data);
+    slix_free(data);
+}
+
 void nfc_maker_scene_save_generate_submenu_callback(void* context, uint32_t index) {
     NfcMaker* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, index);
@@ -413,6 +475,9 @@ bool nfc_maker_scene_save_generate_on_event(void* context, SceneManagerEvent eve
             break;
         case NfcProtocolMfClassic:
             nfc_maker_scene_save_generate_populate_device_mfc(app, event.event);
+            break;
+        case NfcProtocolSlix:
+            nfc_maker_scene_save_generate_populate_device_slix(app, event.event);
             break;
         default:
             break;

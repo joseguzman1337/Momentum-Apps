@@ -81,6 +81,32 @@ const CardDef cards[CardMAX] = {
             .protocol = NfcProtocolMfClassic,
             .generator = NfcDataGeneratorTypeMfClassic4k_7b,
         },
+
+    // Slix (size excludes first block which is Capability Container)
+    [CardSlix] =
+        {
+            .name = "SLIX (108B)",
+            .size = (28 - 1) * SLIX_BLOCK_SIZE,
+            .protocol = NfcProtocolSlix,
+        },
+    [CardSlixS] =
+        {
+            .name = "SLIX-S (156B)",
+            .size = (40 - 1) * SLIX_BLOCK_SIZE,
+            .protocol = NfcProtocolSlix,
+        },
+    [CardSlixL] =
+        {
+            .name = "SLIX-L (28B)",
+            .size = (8 - 1) * SLIX_BLOCK_SIZE,
+            .protocol = NfcProtocolSlix,
+        },
+    [CardSlix2] =
+        {
+            .name = "SLIX2 (316B)",
+            .size = (80 - 1) * SLIX_BLOCK_SIZE,
+            .protocol = NfcProtocolSlix,
+        },
 };
 
 static bool nfc_maker_custom_event_callback(void* context, uint32_t event) {

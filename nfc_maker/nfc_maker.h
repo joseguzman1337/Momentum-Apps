@@ -33,6 +33,7 @@ extern const Icon I_WarningDolphinFlip_45x42;
 #endif
 #include <lib/nfc/protocols/mf_ultralight/mf_ultralight.h>
 #include <lib/nfc/protocols/mf_classic/mf_classic.h>
+#include <lib/nfc/protocols/slix/slix.h>
 #include <lib/nfc/helpers/nfc_data_generator.h>
 
 #define MAC_INPUT_LEN   (GAP_MAC_ADDR_SIZE)
@@ -58,6 +59,12 @@ typedef enum {
     CardMfClassic1K7b,
     CardMfClassic4K4b,
     CardMfClassic4K7b,
+
+    // Slix
+    CardSlix,
+    CardSlixS,
+    CardSlixL,
+    CardSlix2,
 
     CardMAX,
 } Card;
