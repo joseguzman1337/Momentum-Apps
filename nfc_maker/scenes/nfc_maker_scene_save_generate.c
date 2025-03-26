@@ -312,6 +312,7 @@ static void nfc_maker_scene_save_generate_populate_device_mfc(NfcMaker* app, Car
     nfc_data_generator_fill_data(card->generator, app->nfc_device);
     MfClassicData* data = mf_classic_alloc();
     nfc_device_copy_data(app->nfc_device, NfcProtocolMfClassic, data);
+    const size_t sector_count = mf_classic_get_total_sectors_num(data->type);
 
     const uint8_t* buf = app->ndef_buffer;
     size_t len = app->ndef_size;
@@ -336,6 +337,17 @@ static void nfc_maker_scene_save_generate_populate_device_mfc(NfcMaker* app, Car
         }
     }
 
+    // Format data sector trailers
+    MfClassicSectorTrailer data_tr = {
+        .key_a = {{0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7}}, // NFC key
+        .access_bits = {{0x7F, 0x07, 0x88, 0x40}}, // Default access rights
+        .key_b = {{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}}, // Default key
+    };
+    for(size_t sector = 0; sector < sector_count; sector++) {
+        mf_classic_set_sector_trailer_read(
+            data, mf_classic_get_sector_trailer_num_by_sector(sector), &data_tr);
+    }
+
     // https://www.nxp.com/docs/en/application-note/AN10787.pdf
     // Format MAD1
     size_t mad_block = 1;
@@ -347,12 +359,12 @@ static void nfc_maker_scene_save_generate_populate_device_mfc(NfcMaker* app, Car
     MfClassicSectorTrailer mad_tr = {
         .key_a = {{0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5}}, // MAD key
         .access_bits = {{0x78, 0x77, 0x88, 0xC1}}, // Read with A/B, write with B
-        .key_b = {{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}}, // Public key
+        .key_b = {{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}}, // Default key
     };
     mf_classic_set_sector_trailer_read(
         data, mf_classic_get_sector_trailer_num_by_block(mad_block), &mad_tr);
     // Format MAD2
-    if(mf_classic_get_total_sectors_num(data->type) > 16) {
+    if(sector_count > 16) {
         mad_block = 64;
         mad = &data->block[mad_block].data[0];
         mad[1] = 0x01; // Info byte
