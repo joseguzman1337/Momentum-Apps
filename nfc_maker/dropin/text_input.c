@@ -1,9 +1,6 @@
-#ifndef FW_ORIGIN_Momentum
 #include "text_input.h"
-#include <gui/elements.h>
-#if __has_include(<assets_icons.h>)
-#include <assets_icons.h>
-#else
+
+#ifndef FW_ORIGIN_Momentum
 extern const Icon I_KeySaveSelected_22x11;
 extern const Icon I_KeySave_22x11;
 extern const Icon I_KeyKeyboardSelected_10x11;
@@ -11,7 +8,8 @@ extern const Icon I_KeyKeyboard_10x11;
 extern const Icon I_KeyBackspaceSelected_17x11;
 extern const Icon I_KeyBackspace_17x11;
 extern const Icon I_WarningDolphin_45x42;
-#endif
+
+#include <gui/elements.h>
 #include <furi.h>
 
 struct TextInput {
@@ -805,4 +803,5 @@ void text_input_set_header_text(TextInput* text_input, const char* text) {
     furi_check(text_input);
     with_view_model(text_input->view, TextInputModel * model, { model->header = text; }, true);
 }
+
 #endif
