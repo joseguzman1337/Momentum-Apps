@@ -1,6 +1,7 @@
 #pragma once
 
 #include <furi.h>
+#include <furi_hal.h>
 #include <gui/gui.h>
 #include <gui/view.h>
 #include <gui/modules/validators.h>
@@ -31,28 +32,33 @@ extern const Icon I_WarningDolphinFlip_45x42;
 #endif
 #include <lib/nfc/protocols/mf_ultralight/mf_ultralight.h>
 #include <lib/nfc/helpers/nfc_data_generator.h>
-#include <furi_hal_bt.h>
 
-#define MAC_INPUT_LEN   GAP_MAC_ADDR_SIZE
-#define MAIL_INPUT_LEN  128
-#define PHONE_INPUT_LEN 17
+#define MAC_INPUT_LEN   (GAP_MAC_ADDR_SIZE)
+#define MAIL_INPUT_LEN  (128)
+#define PHONE_INPUT_LEN (17)
 
-#define BIG_INPUT_LEN   248
-#define SMALL_INPUT_LEN 90
+#define BIG_INPUT_LEN   (248)
+#define SMALL_INPUT_LEN (90)
 
-#define NTAG_DATA_AREA_UNIT_SIZE 2 * MF_ULTRALIGHT_PAGE_SIZE
+#define NTAG_DATA_AREA_UNIT_SIZE (2 * MF_ULTRALIGHT_PAGE_SIZE)
 typedef enum {
-    Ntag203,
-    Ntag213,
-    Ntag215,
-    Ntag216,
-    NtagI2C1K,
-    NtagI2C2K,
-    NtagMAX,
-} Ntag;
-extern const NfcDataGeneratorType ntag_generators[NtagMAX];
-extern const char* ntag_names[NtagMAX];
-extern const size_t ntag_sizes[NtagMAX];
+    // MfUltralight
+    CardNtag203,
+    CardNtag213,
+    CardNtag215,
+    CardNtag216,
+    CardNtagI2C1K,
+    CardNtagI2C2K,
+
+    CardMAX,
+} Card;
+typedef struct {
+    const char* name;
+    size_t size;
+    NfcProtocol protocol;
+    NfcDataGeneratorType generator;
+} CardDef;
+extern const CardDef cards[CardMAX];
 
 typedef enum {
     WifiAuthenticationOpen = 0x01,

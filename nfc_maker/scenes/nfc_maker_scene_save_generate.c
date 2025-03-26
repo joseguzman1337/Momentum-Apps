@@ -286,6 +286,26 @@ static void nfc_maker_scene_save_generate_populate_ndef_buffer(NfcMaker* app) {
     furi_check(app->ndef_size == (size_t)(buf - app->ndef_buffer));
 }
 
+static void nfc_maker_scene_save_generate_populate_device_mful(NfcMaker* app, Card card_type) {
+    const CardDef* card = &cards[card_type];
+
+    nfc_data_generator_fill_data(card->generator, app->nfc_device);
+    MfUltralightData* data = mf_ultralight_alloc();
+    nfc_device_copy_data(app->nfc_device, NfcProtocolMfUltralight, data);
+
+    size_t size =
+        MIN(card->size, // Known size
+            data->page[3].data[2] * NTAG_DATA_AREA_UNIT_SIZE // Capability Container
+        );
+    furi_check(app->ndef_size <= size);
+    memcpy(&data->page[4].data[0], app->ndef_buffer, app->ndef_size);
+    free(app->ndef_buffer);
+    app->ndef_buffer = NULL;
+
+    nfc_device_set_data(app->nfc_device, NfcProtocolMfUltralight, data);
+    mf_ultralight_free(data);
+}
+
 void nfc_maker_scene_save_generate_submenu_callback(void* context, uint32_t index) {
     NfcMaker* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, index);
@@ -298,14 +318,14 @@ void nfc_maker_scene_save_generate_on_enter(void* context) {
 
     submenu_set_header(submenu, "Tag Type:");
 
-    for(Ntag ntag = 0; ntag < NtagMAX; ntag++) {
+    for(Card card = 0; card < CardMAX; card++) {
         submenu_add_lockable_item(
             submenu,
-            ntag_names[ntag],
-            ntag,
+            cards[card].name,
+            card,
             nfc_maker_scene_save_generate_submenu_callback,
             app,
-            app->ndef_size > ntag_sizes[ntag],
+            app->ndef_size > cards[card].size,
             "Data is\ntoo large!");
     }
 
@@ -321,26 +341,18 @@ bool nfc_maker_scene_save_generate_on_event(void* context, SceneManagerEvent eve
 
     if(event.type == SceneManagerEventTypeCustom) {
         scene_manager_set_scene_state(app->scene_manager, NfcMakerSceneSaveGenerate, event.event);
-        if(event.event >= NtagMAX) return consumed;
+        if(event.event >= CardMAX) return consumed;
         consumed = true;
 
-        nfc_data_generator_fill_data(ntag_generators[event.event], app->nfc_device);
-        MfUltralightData* data = mf_ultralight_alloc();
-        nfc_device_copy_data(app->nfc_device, NfcProtocolMfUltralight, data);
+        switch(cards[event.event].protocol) {
+        case NfcProtocolMfUltralight:
+            nfc_maker_scene_save_generate_populate_device_mful(app, event.event);
+            break;
+        default:
+            break;
+        }
 
-        size_t size =
-            MIN(ntag_sizes[event.event], // Known size
-                data->page[3].data[2] * NTAG_DATA_AREA_UNIT_SIZE // Capability Container
-            );
-        furi_check(app->ndef_size <= size);
-        memcpy(&data->page[4].data[0], app->ndef_buffer, app->ndef_size);
-        free(app->ndef_buffer);
-        app->ndef_buffer = NULL;
-
-        nfc_device_set_data(app->nfc_device, NfcProtocolMfUltralight, data);
-        mf_ultralight_free(data);
-
-        scene_manager_next_scene(app->scene_manager, NfcMakerSceneSaveUidMful);
+        scene_manager_next_scene(app->scene_manager, NfcMakerSceneSaveUid);
     }
 
     return consumed;
