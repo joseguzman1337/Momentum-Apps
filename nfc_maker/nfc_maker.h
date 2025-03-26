@@ -24,6 +24,7 @@ extern const Icon I_WarningDolphinFlip_45x42;
 #include "scenes/nfc_maker_scene.h"
 #include <lib/flipper_format/flipper_format.h>
 #include <toolbox/name_generator.h>
+#include <bit_lib/bit_lib.h>
 #if defined(FW_ORIGIN_Momentum) && __has_include(<applications/main/nfc/nfc_app_i.h>)
 #include <applications/main/nfc/nfc_app_i.h>
 #else
@@ -31,6 +32,7 @@ extern const Icon I_WarningDolphinFlip_45x42;
 #define NFC_APP_EXTENSION ".nfc"
 #endif
 #include <lib/nfc/protocols/mf_ultralight/mf_ultralight.h>
+#include <lib/nfc/protocols/mf_classic/mf_classic.h>
 #include <lib/nfc/helpers/nfc_data_generator.h>
 
 #define MAC_INPUT_LEN   (GAP_MAC_ADDR_SIZE)
@@ -49,6 +51,13 @@ typedef enum {
     CardNtag216,
     CardNtagI2C1K,
     CardNtagI2C2K,
+
+    // MfClassic
+    CardMfClassicMini,
+    CardMfClassic1K4b,
+    CardMfClassic1K7b,
+    CardMfClassic4K4b,
+    CardMfClassic4K7b,
 
     CardMAX,
 } Card;

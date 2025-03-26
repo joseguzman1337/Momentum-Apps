@@ -306,6 +306,69 @@ static void nfc_maker_scene_save_generate_populate_device_mful(NfcMaker* app, Ca
     mf_ultralight_free(data);
 }
 
+static void nfc_maker_scene_save_generate_populate_device_mfc(NfcMaker* app, Card card_type) {
+    const CardDef* card = &cards[card_type];
+
+    nfc_data_generator_fill_data(card->generator, app->nfc_device);
+    MfClassicData* data = mf_classic_alloc();
+    nfc_device_copy_data(app->nfc_device, NfcProtocolMfClassic, data);
+
+    const uint8_t* buf = app->ndef_buffer;
+    size_t len = app->ndef_size;
+    size_t real_block = 4; // Skip MAD1
+
+    uint8_t* cur = &data->block[real_block].data[0];
+    while(len) {
+        size_t sector_trailer = mf_classic_get_sector_trailer_num_by_block(real_block);
+        const uint8_t* end = &data->block[sector_trailer].data[0];
+
+        const size_t chunk_len = MIN((size_t)(end - cur), len);
+        memcpy(cur, buf, chunk_len);
+        buf += chunk_len;
+        len -= chunk_len;
+
+        if(len) {
+            real_block = sector_trailer + 1;
+            if(real_block == 64) {
+                real_block += 4; // Skip MAD2
+            }
+            cur = &data->block[real_block].data[0];
+        }
+    }
+
+    // https://www.nxp.com/docs/en/application-note/AN10787.pdf
+    // Format MAD1
+    size_t mad_block = 1;
+    uint8_t* mad = &data->block[mad_block].data[0];
+    mad[1] = 0x01; // Info byte
+    mad[2] = 0x03; // NDEF app ID
+    mad[3] = 0xE1; // NDEF app ID
+    mad[0] = bit_lib_crc8(&mad[1], MF_CLASSIC_BLOCK_SIZE * 2 - 1, 0x1D, 0xC7, false, false, 0x00);
+    MfClassicSectorTrailer mad_tr = {
+        .key_a = {{0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5}}, // MAD key
+        .access_bits = {{0x78, 0x77, 0x88, 0xC1}}, // Read with A/B, write with B
+        .key_b = {{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}}, // Public key
+    };
+    mf_classic_set_sector_trailer_read(
+        data, mf_classic_get_sector_trailer_num_by_block(mad_block), &mad_tr);
+    // Format MAD2
+    if(mf_classic_get_total_sectors_num(data->type) > 16) {
+        mad_block = 64;
+        mad = &data->block[mad_block].data[0];
+        mad[1] = 0x01; // Info byte
+        mad[0] =
+            bit_lib_crc8(&mad[1], MF_CLASSIC_BLOCK_SIZE * 3 - 1, 0x1D, 0xC7, false, false, 0x00);
+        mf_classic_set_sector_trailer_read(
+            data, mf_classic_get_sector_trailer_num_by_block(mad_block), &mad_tr);
+    }
+
+    free(app->ndef_buffer);
+    app->ndef_buffer = NULL;
+
+    nfc_device_set_data(app->nfc_device, NfcProtocolMfClassic, data);
+    mf_classic_free(data);
+}
+
 void nfc_maker_scene_save_generate_submenu_callback(void* context, uint32_t index) {
     NfcMaker* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, index);
@@ -347,6 +410,9 @@ bool nfc_maker_scene_save_generate_on_event(void* context, SceneManagerEvent eve
         switch(cards[event.event].protocol) {
         case NfcProtocolMfUltralight:
             nfc_maker_scene_save_generate_populate_device_mful(app, event.event);
+            break;
+        case NfcProtocolMfClassic:
+            nfc_maker_scene_save_generate_populate_device_mfc(app, event.event);
             break;
         default:
             break;

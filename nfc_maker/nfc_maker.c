@@ -44,6 +44,43 @@ const CardDef cards[CardMAX] = {
             .protocol = NfcProtocolMfUltralight,
             .generator = NfcDataGeneratorTypeNTAGI2C2k,
         },
+
+    // MfClassic (size excludes sector trailers and MAD1/2 sectors)
+    [CardMfClassicMini] =
+        {
+            .name = "MIFARE Classic Mini 0.3K",
+            .size = (5 - 1) * (4 - 1) * MF_CLASSIC_BLOCK_SIZE,
+            .protocol = NfcProtocolMfClassic,
+            .generator = NfcDataGeneratorTypeMfClassicMini,
+        },
+    [CardMfClassic1K4b] =
+        {
+            .name = "MIFARE Classic 1K UID4",
+            .size = (16 - 1) * (4 - 1) * MF_CLASSIC_BLOCK_SIZE,
+            .protocol = NfcProtocolMfClassic,
+            .generator = NfcDataGeneratorTypeMfClassic1k_4b,
+        },
+    [CardMfClassic1K7b] =
+        {
+            .name = "MIFARE Classic 1K UID7",
+            .size = (16 - 1) * (4 - 1) * MF_CLASSIC_BLOCK_SIZE,
+            .protocol = NfcProtocolMfClassic,
+            .generator = NfcDataGeneratorTypeMfClassic1k_7b,
+        },
+    [CardMfClassic4K4b] =
+        {
+            .name = "MIFARE Classic 4K UID4",
+            .size = (((32 - 2) * (4 - 1)) + ((8) * (16 - 1))) * MF_CLASSIC_BLOCK_SIZE,
+            .protocol = NfcProtocolMfClassic,
+            .generator = NfcDataGeneratorTypeMfClassic4k_4b,
+        },
+    [CardMfClassic4K7b] =
+        {
+            .name = "MIFARE Classic 4K UID7",
+            .size = (((32 - 2) * (4 - 1)) + ((8) * (16 - 1))) * MF_CLASSIC_BLOCK_SIZE,
+            .protocol = NfcProtocolMfClassic,
+            .generator = NfcDataGeneratorTypeMfClassic4k_7b,
+        },
 };
 
 static bool nfc_maker_custom_event_callback(void* context, uint32_t event) {
