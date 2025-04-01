@@ -1,3 +1,10 @@
+/*
+ * This code is based on the Willy-JL's (https://github.com/Willy-JL) BLE fix.
+ * 
+ * Thank you to Willy-JL for providing this code and making it available under the https://github.com/Flipper-XFW/Xtreme-Apps repository.
+ * Your contribution has been invaluable for this project.
+ */
+
 #pragma once
 
 #include <furi_ble/profile_interface.h>
