@@ -32,6 +32,7 @@ struct PoFApp {
     VirtualPortal* virtual_portal;
 
     PoFUsb* pof_usb;
+    
 };
 
 typedef enum {
