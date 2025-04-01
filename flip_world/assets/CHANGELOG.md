@@ -1,3 +1,17 @@
+## 0.7 (2025-03-21)
+- Sped up player movement.
+- Added a Tutorial mode.
+- Fixed transition of worlds.
+
+## 0.6.1 (2025-03-15)
+- Switched the server backend to prepare for multiplayer in version 0.8.
+
+## 0.6 (2025-03-10)
+- Fixed saving of player attributes so that it works as intended.
+- Updated the player's level and strength as XP increases.
+- Started implementing multiplayer (requires FlipperHTTP v1.7).
+- Fixed the display of user stats when switching worlds.
+
 ## 0.5 (2025-01-31)
 - Fixed saving errors.
 - Improved memory allocation.
@@ -5,8 +19,8 @@
 
 ## 0.4 (2025-01-23)
 - Added an In-Game menu.
-- Added New controls (HOLD OK to access the In-Game menu, PRESS BACK to exit the menu, and HOLD BACK to leave the game).
-- Added option to choose player weapon in the Game Settings.
+- Added new controls (HOLD OK to access the In-Game menu, PRESS BACK to exit the menu, and HOLD BACK to leave the game).
+- Added option to choose player's weapon in the Game Settings.
 - Added transition icon for switching worlds.
 - Doubled the size of each world (from 384x192 to 768x384).
 - Improved memory allocation.

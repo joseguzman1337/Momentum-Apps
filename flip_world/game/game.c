@@ -21,6 +21,8 @@ static void game_start(GameManager *game_manager, void *ctx)
     game_context->enemy_count = 0;
     game_context->npc_count = 0;
 
+    game_context->game_mode = game_mode_index;
+
     // set all levels to NULL
     for (int i = 0; i < MAX_LEVELS; i++)
         game_context->levels[i] = NULL;
@@ -33,20 +35,34 @@ static void game_start(GameManager *game_manager, void *ctx)
     for (int i = 0; i < MAX_NPCS; i++)
         game_context->npcs[i] = NULL;
 
-    // attempt to allocate all levels
-    for (int i = 0; i < MAX_LEVELS; i++)
+    if (game_context->game_mode == GAME_MODE_PVE)
     {
-        if (!allocate_level(game_manager, i))
+        // attempt to allocate all levels
+        for (int i = 0; i < MAX_LEVELS; i++)
         {
-            if (i == 0)
+            if (!allocate_level(game_manager, i))
             {
-                game_context->levels[0] = game_manager_add_level(game_manager, training_world());
-                game_context->level_count = 1;
+                if (i == 0)
+                {
+                    game_context->levels[0] = game_manager_add_level(game_manager, training_world());
+                    game_context->level_count = 1;
+                }
+                break;
             }
-            break;
+            else
+                game_context->level_count++;
         }
-        else
-            game_context->level_count++;
+    }
+    else if (game_context->game_mode == GAME_MODE_STORY)
+    {
+        // show tutorial only for now
+        game_context->levels[0] = game_manager_add_level(game_manager, training_world());
+        game_context->level_count = 1;
+    }
+    else if (game_context->game_mode == GAME_MODE_PVP)
+    {
+        // show pvp menu
+        easy_flipper_dialog("Unavailable", "\nPvP mode is not ready yet.\nPress BACK to return.");
     }
 
     // imu
@@ -82,16 +98,23 @@ static void game_stop(void *ctx)
         level_clear(game_context->levels[game_context->current_level]);
     }
 
-    if (game_context->player_context)
+    PlayerContext *player_context = malloc(sizeof(PlayerContext));
+    if (!player_context)
     {
-        if (!game_context->ended_early)
-            easy_flipper_dialog(
-                "Game Over",
-                "Thanks for playing FlipWorld!\nHit BACK then wait for\nthe game to save.");
-        else
-            easy_flipper_dialog(
-                "Game Over", "Ran out of memory so the\ngame ended early.\nHit BACK to exit.");
+        FURI_LOG_E("Game", "Failed to allocate PlayerContext");
+        return;
+    }
 
+    if (!game_context->ended_early)
+        easy_flipper_dialog(
+            "Game Over",
+            "Thanks for playing FlipWorld!\nHit BACK then wait for\nthe game to save.");
+    else
+        easy_flipper_dialog(
+            "Game Over", "Ran out of memory so the\ngame ended early.\nHit BACK to exit.");
+
+    if (load_player_context(player_context))
+    {
         ViewPort *view_port = view_port_alloc();
         view_port_draw_callback_set(view_port, thanks, NULL);
         Gui *gui = furi_record_open(RECORD_GUI);
@@ -99,9 +122,9 @@ static void game_stop(void *ctx)
         uint32_t tick_count = furi_get_tick();
         furi_delay_ms(800);
 
-        save_player_context_api(game_context->player_context);
+        save_player_context_api(player_context);
 
-        const uint32_t delay = 2500;
+        const uint32_t delay = 3500;
         tick_count = (tick_count + delay) - furi_get_tick();
         if (tick_count <= delay)
         {
@@ -114,6 +137,13 @@ static void game_stop(void *ctx)
 
         gui_remove_view_port(gui, view_port);
         furi_record_close(RECORD_GUI);
+    }
+
+    // free the player context
+    if (player_context)
+    {
+        free(player_context);
+        player_context = NULL;
     }
 }
 

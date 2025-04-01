@@ -103,16 +103,10 @@ static void draw_town_world(Level *level, GameManager *manager, void *context)
     }
     furi_string_free(json_data_str);
     set_world(level, manager, "shadow_woods_v5");
-    /*
-      adjust the player's position n such based on icon count
-      the more icons to draw, the slower the player moves
-      so we'll increase the player's speed as the icon count increases
-      by 0.1 for every 8 icons
-  */
     game_context->icon_offset = 0;
     if (!game_context->imu_present)
     {
-        game_context->icon_offset += ((game_context->icon_count / 8) / 10);
+        game_context->icon_offset += ((game_context->icon_count / 10) / 15);
     }
     player_spawn(level, manager);
 }
@@ -146,10 +140,10 @@ FuriString *fetch_world(const char *name)
     }
 
     char url[256];
-    snprintf(url, sizeof(url), "https://www.flipsocial.net/api/world/v5/get/world/%s/", name);
+    snprintf(url, sizeof(url), "https://www.jblanked.com/flipper/api/world/v5/get/world/%s/", name);
     snprintf(fhttp->file_path, sizeof(fhttp->file_path), STORAGE_EXT_PATH_PREFIX "/apps_data/flip_world/worlds/%s.json", name);
     fhttp->save_received_data = true;
-    if (!flipper_http_get_request_with_headers(fhttp, url, "{\"Content-Type\": \"application/json\"}"))
+    if (!flipper_http_request(fhttp, GET, url, "{\"Content-Type\": \"application/json\"}", NULL))
     {
         FURI_LOG_E("Game", "Failed to send HTTP request");
         flipper_http_free(fhttp);
