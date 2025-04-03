@@ -1,9 +1,16 @@
 #pragma once
 
+#include <lib/nfc/nfc.h>
+#include <nfc/nfc_listener.h>
+#include <nfc/nfc_poller.h>
+#include <nfc/nfc_device.h>
 #include <lib/nfc/protocols/nfc_generic_event.h>
 #include <lib/nfc/protocols/iso14443_4b/iso14443_4b_poller.h>
 #include <lib/nfc/helpers/iso14443_crc.h>
 #include <mbedtls/des.h>
+
+#include <lib/toolbox/stream/stream.h>
+#include <lib/toolbox/stream/file_stream.h>
 
 #include "passy_i.h"
 #include "passy_common.h"
@@ -14,17 +21,22 @@
 NfcCommand passy_reader_poller_callback(NfcGenericEvent event, void* context);
 
 typedef struct {
+    Passy* passy;
+
     Iso14443_4bPoller* iso14443_4b_poller;
     BitBuffer* tx_buffer;
     BitBuffer* rx_buffer;
 
     BitBuffer* DG1;
+    BitBuffer* COM;
+    BitBuffer* dg_header;
 
     SecureMessaging* secure_messaging;
 
+    uint16_t last_sw;
 } PassyReader;
 
-PassyReader* passy_reader_alloc(Passy* passy, Iso14443_4bPoller* iso14443_4b_poller);
+PassyReader* passy_reader_alloc(Passy* passy);
 
 void passy_reader_free(PassyReader* passy_reader);
 

@@ -192,6 +192,8 @@ Passy* passy_alloc() {
     passy->load_path = furi_string_alloc();
 
     passy->DG1 = bit_buffer_alloc(PASSY_DG1_MAX_LENGTH);
+    passy->COM = bit_buffer_alloc(PASSY_DG1_MAX_LENGTH);
+    passy->dg_header = bit_buffer_alloc(PASSY_DG1_MAX_LENGTH);
 
     return passy;
 }
@@ -252,6 +254,8 @@ void passy_free(Passy* passy) {
     furi_record_close(RECORD_DIALOGS);
 
     bit_buffer_free(passy->DG1);
+    bit_buffer_free(passy->COM);
+    bit_buffer_free(passy->dg_header);
 
     free(passy);
 }
@@ -305,8 +309,6 @@ void passy_show_loading_popup(void* context, bool show) {
 int32_t passy_app(void* p) {
     UNUSED(p);
     Passy* passy = passy_alloc();
-
-    passy_load_mrz_info(passy);
 
     scene_manager_next_scene(passy->scene_manager, PassySceneMainMenu);
 

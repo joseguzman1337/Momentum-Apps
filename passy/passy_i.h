@@ -88,6 +88,15 @@ struct Passy {
     char date_of_expiry[PASSY_DOE_MAX_LENGTH + 1];
 
     BitBuffer* DG1;
+    BitBuffer* COM;
+    BitBuffer* dg_header;
+
+    PassyReadType read_type;
+
+    size_t offset;
+    size_t bytes_total;
+
+    uint16_t last_sw;
 };
 
 typedef enum {
