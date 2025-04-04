@@ -49,7 +49,6 @@ static const CdcCallbacks cdc_cb = {
     .state_callback = &vcp_state_callback,
     .ctrl_line_callback = &vcp_on_cdc_control_line,
     .config_callback = &vcp_on_line_config,
-    .break_callback = NULL,
 };
 
 static void usb_uart_vcp_init(UsbUart* usb_uart, uint8_t vcp_ch) {
