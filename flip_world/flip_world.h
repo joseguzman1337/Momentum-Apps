@@ -15,8 +15,12 @@
 //
 
 #define TAG "FlipWorld"
-#define VERSION 0.7
+#define VERSION "0.8.1"
 #define VERSION_TAG TAG " " FAP_VERSION
+//
+
+#define APP_ID "67f22e9a25a4a6f1fb4a2c4a"
+#define BUILD_ID "676900d983aa88302bc114c6"
 
 // Define the submenu items for our FlipWorld application
 typedef enum
@@ -30,6 +34,7 @@ typedef enum
     FlipWorldSubmenuIndexWiFiSettings,
     FlipWorldSubmenuIndexGameSettings,
     FlipWorldSubmenuIndexUserSettings,
+    FlipWorldSubmenuIndexLobby,
 } FlipWorldSubmenuIndex;
 
 // Define a single view for our FlipWorld application
@@ -37,8 +42,11 @@ typedef enum
 {
     FlipWorldViewSubmenu,          // The submenu
     FlipWorldViewGameSubmenu,      // The game submenu
+    FlipWorldViewSubmenuOther,     // The submenu used by settings and lobby
     FlipWorldViewMessage,          // The about, loading screen
     FlipWorldViewSettings,         // The settings screen
+    FlipWorldViewLobby,            // The lobby screen
+    FlipWorldViewWaitingLobby,     // The waiting lobby screen
     FlipWorldViewVariableItemList, // The variable item list screen
     FlipWorldViewTextInput,        // The text input screen
     //
@@ -63,7 +71,7 @@ typedef struct
     View *view_message;                    // The about, loading screen
     Submenu *submenu;                      // The submenu
     Submenu *submenu_game;                 // The game submenu
-    Submenu *submenu_settings;             // The settings submenu
+    Submenu *submenu_other;                // submenu used by settings and lobby
     VariableItemList *variable_item_list;  // The variable item list (settngs)
     VariableItem *variable_item_wifi_ssid; // The variable item for WiFi SSID
     VariableItem *variable_item_wifi_pass; // The variable item for WiFi password
@@ -84,21 +92,23 @@ typedef struct
     char *text_input_buffer;         // Buffer for the text input
     char *text_input_temp_buffer;    // Temporary buffer for the text input
     uint32_t text_input_buffer_size; // Size of the text input buffer
+    //
 } FlipWorldApp;
 
 extern char *fps_choices_str[];
-extern int fps_index;
+extern uint8_t fps_index;
 extern char *yes_or_no_choices[];
-extern int screen_always_on_index;
-extern int sound_on_index;
-extern int vibration_on_index;
+extern uint8_t screen_always_on_index;
+extern uint8_t sound_on_index;
+extern uint8_t vibration_on_index;
 extern char *player_sprite_choices[];
-extern int player_sprite_index;
+extern uint8_t player_sprite_index;
 extern char *vgm_levels[];
-extern int vgm_x_index;
-extern int vgm_y_index;
-extern int game_mode_index;
+extern uint8_t vgm_x_index;
+extern uint8_t vgm_y_index;
+extern uint8_t game_mode_index;
 float atof_(const char *nptr);
 float atof_furi(const FuriString *nptr);
 bool is_str(const char *src, const char *dst);
-bool is_enough_heap(size_t heap_size);
+bool is_enough_heap(size_t heap_size, bool check_blocks);
+bool flip_world_handle_app_update(FlipperHTTP *fhttp, bool use_flipper_api);
