@@ -31,6 +31,8 @@ BlackhatApp* blackhat_app_alloc()
 
     app->dialogs = furi_record_open(RECORD_DIALOGS);
 
+    memset(app->cmd, 0x00, sizeof(app->cmd));
+
     app->gui = furi_record_open(RECORD_GUI);
 
     app->view_dispatcher = view_dispatcher_alloc();
@@ -60,6 +62,14 @@ BlackhatApp* blackhat_app_alloc()
         variable_item_list_get_view(app->var_item_list)
     );
 
+    // Var item list for script
+    app->script_item_list = variable_item_list_alloc();
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        BlackhatAppViewScriptItemList,
+        variable_item_list_get_view(app->script_item_list)
+    );
+
     app->text_input = text_input_alloc();
     view_dispatcher_add_view(
         app->view_dispatcher,
@@ -72,11 +82,16 @@ BlackhatApp* blackhat_app_alloc()
     }
 
     app->text_box = text_box_alloc();
+
     view_dispatcher_add_view(
         app->view_dispatcher,
         BlackhatAppViewConsoleOutput,
         text_box_get_view(app->text_box)
     );
+
+    app->script_text = malloc(BLACKHAT_TEXT_BOX_STORE_SIZE);
+    app->script_text_ptr = 0;
+
     app->text_box_store = furi_string_alloc();
     furi_string_reserve(app->text_box_store, BLACKHAT_TEXT_BOX_STORE_SIZE);
 
@@ -89,11 +104,23 @@ void blackhat_app_free(BlackhatApp* app)
 {
     furi_assert(app);
 
+    for(int i = 0 ; i < app->num_scripts ; i++) {
+        if(app->cmd[i])
+            free(app->cmd[i]);
+    }
+
     // Views
     view_dispatcher_remove_view(
         app->view_dispatcher, BlackhatAppViewVarItemList
     );
+
+    view_dispatcher_remove_view(
+        app->view_dispatcher, BlackhatAppViewScriptItemList
+    );
+
+    variable_item_list_free(app->script_item_list);
     variable_item_list_free(app->var_item_list);
+
     view_dispatcher_remove_view(app->view_dispatcher, BlackhatAppViewTextInput);
     text_input_free(app->text_input);
     view_dispatcher_remove_view(
@@ -125,6 +152,7 @@ int32_t blackhat_app(void* p)
     expansion_disable(expansion);
 
     BlackhatApp* blackhat_app = blackhat_app_alloc();
+    blackhat_app->scanned = false;
 
     bool otg_was_enabled = furi_hal_power_is_otg_enabled();
     // turn off 5v, so it gets reset on startup
