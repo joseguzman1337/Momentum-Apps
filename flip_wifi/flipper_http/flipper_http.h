@@ -62,29 +62,32 @@ typedef enum {
     HTTP_CMD_LIST_COMMANDS,
     HTTP_CMD_LED_ON,
     HTTP_CMD_LED_OFF,
-    HTTP_CMD_PING
+    HTTP_CMD_PING,
+    HTTP_CMD_REBOOT
 } HTTPCommand; // list of non-input commands
 
 // FlipperHTTP Structure
-typedef struct {
-    FuriStreamBuffer* flipper_http_stream; // Stream buffer for UART communication
-    FuriHalSerialHandle* serial_handle; // Serial handle for UART communication
-    FuriThread* rx_thread; // Worker thread for UART
-    FuriThreadId rx_thread_id; // Worker thread ID
-    FlipperHTTP_Callback handle_rx_line_cb; // Callback for received lines
-    void* callback_context; // Context for the callback
-    HTTPState state; // State of the UART
-    HTTPMethod method; // HTTP method
-    char* last_response; // variable to store the last received data from the UART
-    char file_path[256]; // Path to save the received data
-    FuriTimer* get_timeout_timer; // Timer for HTTP request timeout
-    bool started_receiving; // Indicates if a request has started
-    bool just_started; // Indicates if data reception has just started
-    bool is_bytes_request; // Flag to indicate if the request is for bytes
-    bool save_bytes; // Flag to save the received data to a file
-    bool save_received_data; // Flag to save the received data to a file
-    bool just_started_bytes; // Indicates if bytes data reception has just started
-    size_t bytes_received; // Number of bytes received
+typedef struct
+{
+    FuriStreamBuffer *flipper_http_stream;    // Stream buffer for UART communication
+    FuriHalSerialHandle *serial_handle;       // Serial handle for UART communication
+    FuriThread *rx_thread;                    // Worker thread for UART
+    FuriThreadId rx_thread_id;                // Worker thread ID
+    FlipperHTTP_Callback handle_rx_line_cb;   // Callback for received lines
+    void *callback_context;                   // Context for the callback
+    HTTPState state;                          // State of the UART
+    HTTPMethod method;                        // HTTP method
+    char *last_response;                      // variable to store the last received data from the UART
+    FuriString *last_response_str;            // String to store the last received data
+    char file_path[256];                      // Path to save the received data
+    FuriTimer *get_timeout_timer;             // Timer for HTTP request timeout
+    bool started_receiving;                   // Indicates if a request has started
+    bool just_started;                        // Indicates if data reception has just started
+    bool is_bytes_request;                    // Flag to indicate if the request is for bytes
+    bool save_bytes;                          // Flag to save the received data to a file
+    bool save_received_data;                  // Flag to save the received data to a file
+    bool just_started_bytes;                  // Indicates if bytes data reception has just started
+    size_t bytes_received;                    // Number of bytes received
     char rx_line_buffer[RX_LINE_BUFFER_SIZE]; // Buffer for received lines
     uint8_t file_buffer[FILE_BUFFER_SIZE]; // Buffer for file data
     size_t file_buffer_len; // Length of the file buffer
