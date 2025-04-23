@@ -52,7 +52,7 @@ void free_text_input()
     }
     if (app_instance->text_input)
     {
-        uart_text_input_free(app_instance->text_input);
+        text_input_free(app_instance->text_input);
         app_instance->text_input = NULL;
         view_dispatcher_remove_view(app_instance->view_dispatcher, FlipSocialViewTextInput);
     }
