@@ -30,6 +30,6 @@ void upython_cli_unregister(void* args);
 
 void upython_cli(PipeSide* pipe, FuriString* args, void* ctx);
 
-void upython_repl_execute(PipeSide* pipe);
+void upython_repl_execute();
 
 void upython_file_execute(FuriString* file);
