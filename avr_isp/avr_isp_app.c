@@ -169,6 +169,8 @@ void avr_isp_app_free(AvrIspApp* app) {
 int32_t avr_isp_app(void* p) {
     UNUSED(p);
 
+    furi_hal_usb_unlock();
+
     if(furi_hal_usb_is_locked()) {
         DialogsApp* dialogs = furi_record_open(RECORD_DIALOGS);
         DialogMessage* message = dialog_message_alloc();
