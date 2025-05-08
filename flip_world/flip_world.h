@@ -86,7 +86,7 @@ typedef struct
     VariableItem *variable_item_user_username; // The variable item for the User username
     VariableItem *variable_item_user_password; // The variable item for the User password
 
-    UART_TextInput *text_input;      // The text input
+    TextInput *text_input;      // The text input
     char *text_input_buffer;         // Buffer for the text input
     char *text_input_temp_buffer;    // Temporary buffer for the text input
     uint32_t text_input_buffer_size; // Size of the text input buffer

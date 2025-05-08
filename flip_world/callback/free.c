@@ -53,7 +53,7 @@ void free_text_input_view(void *context)
     if (app->text_input)
     {
         view_dispatcher_remove_view(app->view_dispatcher, FlipWorldViewTextInput);
-        uart_text_input_free(app->text_input);
+        text_input_free(app->text_input);
         app->text_input = NULL;
     }
     if (app->text_input_buffer)
