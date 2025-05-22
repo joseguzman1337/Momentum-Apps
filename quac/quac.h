@@ -49,7 +49,6 @@ typedef struct App {
     ItemsView* items_view;
     int depth;
     int selected_item;
-    bool raw_file_is_tx;
 
     FuriString* temp_str; // used for renames/etc
     char temp_cstr[MAX_NAME_LEN]; // used for renames/etc

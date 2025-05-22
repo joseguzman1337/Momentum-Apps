@@ -87,9 +87,9 @@ void action_subghz_need_save_callback(void* context) {
 static void action_subghz_raw_end_callback(void* context) {
     FURI_LOG_I(TAG, "Stopping TX on RAW");
     furi_assert(context);
-    App* app = context;
+    FuriThread* thread = context;
 
-    app->raw_file_is_tx = false;
+    furi_thread_flags_set(furi_thread_get_id(thread), 0);
 }
 
 void action_subghz_tx(void* context, FuriString* action_path, FuriString* error) {
@@ -108,10 +108,9 @@ void action_subghz_tx(void* context, FuriString* action_path, FuriString* error)
 
     FuriString* preset_name = furi_string_alloc();
     FuriString* protocol_name = furi_string_alloc();
+    bool is_raw = false;
 
     subghz_custom_btns_reset();
-
-    app->raw_file_is_tx = false;
 
     FuriString* temp_str;
     temp_str = furi_string_alloc();
@@ -197,6 +196,7 @@ void action_subghz_tx(void* context, FuriString* action_path, FuriString* error)
         if(!strcmp(furi_string_get_cstr(protocol_name), "RAW")) {
             subghz_protocol_raw_gen_fff_data(
                 fff_data, file_name, subghz_txrx_radio_device_get_name(txrx));
+            is_raw = true;
         } else {
             stream_copy_full(
                 flipper_format_get_raw_stream(fff_data_file),
@@ -218,34 +218,27 @@ void action_subghz_tx(void* context, FuriString* action_path, FuriString* error)
     flipper_format_file_close(fff_data_file);
     flipper_format_free(fff_data_file);
 
+    if(is_raw) {
+        subghz_txrx_set_raw_file_encoder_worker_callback_end(
+            txrx, action_subghz_raw_end_callback, furi_thread_get_current());
+    }
+
     if(subghz_txrx_tx_start(txrx, subghz_txrx_get_fff_data(txrx)) != SubGhzTxRxStartTxStateOk) {
         FURI_LOG_E(TAG, "Failed to start TX");
     }
 
-    bool skip_extra_stop = false;
-    FURI_LOG_D(TAG, "Checking if file is RAW...");
-    if(!strcmp(furi_string_get_cstr(protocol_name), "RAW")) {
-        subghz_txrx_set_raw_file_encoder_worker_callback_end(
-            txrx, action_subghz_raw_end_callback, app);
-        app->raw_file_is_tx = true;
-        skip_extra_stop = true;
-    }
-    do {
-        furi_delay_ms(1);
-    } while(app->raw_file_is_tx);
-
-    if(!app->raw_file_is_tx && !skip_extra_stop) {
-        // TODO: Should this be based on a Setting?
-        furi_delay_ms(1500);
-        subghz_txrx_stop(txrx);
+    if(is_raw) {
+        // Wait for action_subghz_raw_end_callback() to notify us
+        furi_thread_flags_wait(0, FuriFlagWaitAll, FuriWaitForever);
     } else {
         // TODO: Should this be based on a Setting?
-        furi_delay_ms(50);
-        subghz_txrx_stop(txrx);
+        furi_delay_ms(1500);
     }
-    skip_extra_stop = false;
 
     FURI_LOG_I(TAG, "SUBGHZ: Action complete.");
+
+    // This will call need_save_callback, if necessary
+    subghz_txrx_stop(txrx);
 
     subghz_custom_btns_reset();
 
