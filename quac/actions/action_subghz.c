@@ -218,17 +218,13 @@ void action_subghz_tx(void* context, FuriString* action_path, FuriString* error)
     flipper_format_file_close(fff_data_file);
     flipper_format_free(fff_data_file);
 
-    if(is_raw) {
-        subghz_txrx_set_raw_file_encoder_worker_callback_end(
-            txrx, action_subghz_raw_end_callback, furi_thread_get_current());
-    }
-
     if(subghz_txrx_tx_start(txrx, subghz_txrx_get_fff_data(txrx)) != SubGhzTxRxStartTxStateOk) {
         FURI_LOG_E(TAG, "Failed to start TX");
     }
 
     if(is_raw) {
-        // Wait for action_subghz_raw_end_callback() to notify us
+        subghz_txrx_set_raw_file_encoder_worker_callback_end(
+            txrx, action_subghz_raw_end_callback, furi_thread_get_current());
         furi_thread_flags_wait(0, FuriFlagWaitAll, FuriWaitForever);
     } else {
         // TODO: Should this be based on a Setting?
