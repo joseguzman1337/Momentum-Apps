@@ -1,22 +1,17 @@
 // Methods for Sub-GHz transmission
 
 #include <flipper_format/flipper_format_i.h>
-#include <path.h>
-#include <string.h>
 
 #include "helpers/subghz_txrx.h"
 #include <lib/subghz/blocks/custom_btn.h>
-#include <lib/subghz/protocols/raw.h>
 
 #include "action_i.h"
 #include "quac.h"
 
-#define SUBGHZ_DIR_PATH EXT_PATH("subghz/")
-
 typedef struct SubGhzNeedSaveContext {
     App* app;
     SubGhzTxRx* txrx;
-    FuriString* file_path;
+    const FuriString* file_path;
 } SubGhzNeedSaveContext;
 
 void action_subghz_need_save_callback(void* context) {
@@ -46,42 +41,6 @@ void action_subghz_need_save_callback(void* context) {
             break;
         }
     } while(0);
-
-    // Update original .sub file.
-    //In case when rolling code was used in Quac we must update original .sub file with actual rolling code counter
-
-    // Take file name from quac_app path
-    FuriString* quac_filename = furi_string_alloc();
-    furi_string_reset(quac_filename);
-    path_extract_filename(savectx->file_path, quac_filename, false);
-    FURI_LOG_I(TAG, "Extracted quac filename: %s", furi_string_get_cstr(quac_filename));
-
-    //create new char string with full path (dir+filename) to original subghz folder
-    char* full_subghz_file_name =
-        malloc(1 + strlen(SUBGHZ_DIR_PATH) + strlen(furi_string_get_cstr(quac_filename)));
-    strcpy(full_subghz_file_name, SUBGHZ_DIR_PATH);
-    strcat(full_subghz_file_name, furi_string_get_cstr(quac_filename));
-    FURI_LOG_I(TAG, "Full path to safe file: %s", full_subghz_file_name);
-
-    //Save subghz file to original subghz location
-    do {
-        if(!storage_simply_remove(savectx->app->storage, full_subghz_file_name)) {
-            FURI_LOG_E(
-                TAG, "Failed to delete subghz file before re-save in original SUBGHZ location");
-            break;
-        }
-        stream_seek(ff_stream, 0, StreamOffsetFromStart);
-        stream_save_to_file(
-            ff_stream, savectx->app->storage, full_subghz_file_name, FSOM_CREATE_ALWAYS);
-        if(storage_common_stat(savectx->app->storage, full_subghz_file_name, NULL) != FSE_OK) {
-            FURI_LOG_E(
-                TAG, "Error verifying new subghz file after re-save in original SUBGHZ location");
-            break;
-        }
-    } while(0);
-
-    free(full_subghz_file_name);
-    furi_string_free(quac_filename);
 }
 
 static void action_subghz_raw_end_callback(void* context) {
@@ -92,7 +51,7 @@ static void action_subghz_raw_end_callback(void* context) {
     furi_thread_flags_set(furi_thread_get_id(thread), 0);
 }
 
-void action_subghz_tx(void* context, FuriString* action_path, FuriString* error) {
+void action_subghz_tx(void* context, const FuriString* action_path, FuriString* error) {
     App* app = context;
     const char* file_name = furi_string_get_cstr(action_path);
 
