@@ -154,7 +154,7 @@ static void subghz_playlist_creator_submenu_callback(void* context, uint32_t ind
         memset(app->text_buffer, 0, MAX_TEXT_LENGTH);
         scene_text_input_show(app);
     } else if(index == 1) { // Edit
-        scene_file_browser_select(app, "/ext", PLAYLIST_EXTENSION, on_edit_file_selected);
+        scene_file_browser_select(app, PLAYLIST_DIRECTORY, PLAYLIST_EXTENSION, on_edit_file_selected);
     }
 }
 
