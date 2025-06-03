@@ -21,7 +21,7 @@
 
 #define POPUP_DISPLAY_TIME 2000 // 2 seconds in milliseconds
 #define PLAYLIST_EXTENSION ".txt"
-#define PLAYLIST_DIRECTORY "/ext/subghz/playlists"
+#define PLAYLIST_DIRECTORY "/ext/subghz/playlist"
 #define MAX_TEXT_LENGTH 128
 
 // Forward declarations
