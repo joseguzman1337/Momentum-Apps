@@ -166,36 +166,16 @@ extern "C"
         ViewDispatcher **view_dispatcher,
         void *context);
 
-<<<<<<< HEAD
-/**
- * @brief Initialize a TextInput object with extra symbols
- * @param uart_text_input The TextInput object to initialize
- * @param view_id The ID/Index of the view
- * @param previous_callback The previous callback function (can be set to NULL)
- * @param view_dispatcher The ViewDispatcher object
- * @return true if successful, false otherwise
- */
-bool easy_flipper_set_uart_text_input(
-    TextInput **uart_text_input,
-    int32_t view_id,
-    char *header_text,
-    char *uart_text_input_temp_buffer,
-    uint32_t uart_text_input_buffer_size,
-    void (*result_callback)(void *),
-    uint32_t(previous_callback)(void *),
-    ViewDispatcher **view_dispatcher,
-    void *context);
-=======
     /**
-     * @brief Initialize a UART_TextInput object
-     * @param uart_text_input The UART_TextInput object to initialize
+     * @brief Initialize a TextInput object with extra symbols
+     * @param uart_text_input The TextInput object to initialize
      * @param view_id The ID/Index of the view
      * @param previous_callback The previous callback function (can be set to NULL)
      * @param view_dispatcher The ViewDispatcher object
      * @return true if successful, false otherwise
      */
     bool easy_flipper_set_uart_text_input(
-        UART_TextInput **uart_text_input,
+        TextInput **uart_text_input,
         int32_t view_id,
         const char *header_text,
         char *uart_text_input_temp_buffer,
@@ -204,7 +184,6 @@ bool easy_flipper_set_uart_text_input(
         uint32_t(previous_callback)(void *),
         ViewDispatcher **view_dispatcher,
         void *context);
->>>>>>> 848245075dc9afe32349c4cd6f7c4d34fbc8b0d0
 
     /**
      * @brief Initialize a DialogEx object
