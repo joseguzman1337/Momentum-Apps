@@ -25,7 +25,7 @@ static void draw_callback(Canvas* canvas, void* ctx) {
     }
 
     canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str_aligned(canvas, 60, 28, AlignCenter, AlignCenter, "USB Midi");
+    canvas_draw_str_aligned(canvas, 60, 28, AlignCenter, AlignCenter, "USB-MIDI");
 
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str_aligned(canvas, 60, 42, AlignCenter, AlignCenter, note_line);
