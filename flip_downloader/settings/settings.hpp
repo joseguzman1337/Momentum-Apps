@@ -14,7 +14,7 @@ class FlipDownloaderSettings
 {
 private:
     void *appContext = nullptr;                      // reference to the app context
-    UART_TextInput *text_input = nullptr;            // UART text input instance
+    TextInput *text_input = nullptr;            // UART text input instance
     std::unique_ptr<char[]> text_input_buffer;       // buffer for text input
     uint32_t text_input_buffer_size = 128;           // size of the text input buffer
     std::unique_ptr<char[]> text_input_temp_buffer;  // temporary buffer for text input

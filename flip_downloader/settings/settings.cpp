@@ -44,7 +44,7 @@ void FlipDownloaderSettings::freeTextInput()
     if (text_input && view_dispatcher_ref && *view_dispatcher_ref)
     {
         view_dispatcher_remove_view(*view_dispatcher_ref, FlipDownloaderViewTextInput);
-        uart_text_input_free(text_input);
+        text_input_free(text_input);
         text_input = nullptr;
     }
     text_input_buffer.reset();
