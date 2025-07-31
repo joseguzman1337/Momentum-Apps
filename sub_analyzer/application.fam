@@ -11,7 +11,7 @@ App(
     ],
     stack_size=8 * 1024,
     fap_icon="sub_analyzer.png",
-    fap_category="SubGhz",
+    fap_category="Sub-GHz",
     fap_author="RocketGod",
     fap_weburl="https://betaskynet.com",
     fap_version=(1, 0),
