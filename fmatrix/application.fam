@@ -1,9 +1,9 @@
 App(
     appid="fmatrix",
-    name="fmatrix",
+    name="Fmatrix",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="matrix_app",
-    fap_category="Tools",
+    fap_category="Media",
     fap_author="misterwaztaken",
     fap_icon="fmatrix.png",
     stack_size=2 * 1024,
