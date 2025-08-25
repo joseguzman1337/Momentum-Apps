@@ -33,6 +33,8 @@
 
 #define HID_INTERVAL 1
 
+#undef HID_VID_DEFAULT
+#undef HID_PID_DEFAULT
 #define HID_VID_DEFAULT 0x0e6f // Logic3
 #define HID_PID_DEFAULT 0x0241
 
