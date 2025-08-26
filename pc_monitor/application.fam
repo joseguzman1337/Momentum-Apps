@@ -1,6 +1,6 @@
 App(
     appid="pc_monitor",
-    name="PC monitor",
+    name="PC Monitor",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="pc_monitor_app",
     requires=["bt", "gui"],
