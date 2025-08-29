@@ -228,6 +228,10 @@ bool weebo_get_figure_series(Weebo* weebo, FuriString* name) {
         furi_string_set_str(name, "Monster Hunter");
         parsed = true;
         break;
+    case 0x1B:
+        furi_string_set_str(name, "Xenoblade Chronicles");
+        parsed = true;
+        break;
     default:
         break;
     }
