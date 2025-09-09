@@ -231,12 +231,15 @@ static bool subghz_txrx_tx(SubGhzTxRx* instance, uint32_t frequency) {
     return ret;
 }
 
-static SubGhzProtocolStatus subghz_txrx_deserialize_transmitter_set_button(SubGhzTxRx* instance, FlipperFormat* flipper_format) {
+static SubGhzProtocolStatus subghz_txrx_deserialize_transmitter_set_button(
+    SubGhzTxRx* instance,
+    FlipperFormat* flipper_format) {
     furi_assert(instance);
     furi_assert(flipper_format);
 
     // Call deserialize a first time to allow or not custom buttons
-    SubGhzProtocolStatus ret = subghz_transmitter_deserialize(instance->transmitter, flipper_format);
+    SubGhzProtocolStatus ret =
+        subghz_transmitter_deserialize(instance->transmitter, flipper_format);
     if(ret != SubGhzProtocolStatusOk) {
         return ret;
     }
@@ -244,10 +247,11 @@ static SubGhzProtocolStatus subghz_txrx_deserialize_transmitter_set_button(SubGh
     uint8_t button = subghz_txrx_custom_button_get(instance);
     if(subghz_custom_btn_is_allowed()) {
         subghz_custom_btn_set(button);
+        // Call deserialize a second time to apply button changes.
+        ret = subghz_transmitter_deserialize(instance->transmitter, flipper_format);
     }
 
-    // Call deserialize a second time to apply button changes.
-    return subghz_transmitter_deserialize(instance->transmitter, flipper_format);
+    return ret;
 }
 
 SubGhzTxRxStartTxState subghz_txrx_tx_start(SubGhzTxRx* instance, FlipperFormat* flipper_format) {
