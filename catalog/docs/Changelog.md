@@ -1,3 +1,9 @@
+## v1.7
+- Fixes for RAW files sending by WillyJL
+
+## v1.6
+- Support for custom buttons in UL FW by MrLego8-9
+
 ## v1.5
 - Fixes for new API
 
