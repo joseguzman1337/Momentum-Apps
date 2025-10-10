@@ -23,6 +23,7 @@ As i know these firmwares are supported and working if you know any more please 
 - LED indicator (Whether or not the LED's will be on)
 - Skip errors (Makes it so you can make the emulation screen hide errors and skip delays between errors and emulation)
 - Loop (Makes it so the playlist will loop back to the start when it reaches the end)
+- Time controls (Allows you to disable the time controls)
 - User controls (Allows you to control the position of the playlist using the buttons on the flipper skipping and rewinding the playlist)
 - Back to defaults (Resets all settings to their default values)
 - Save settings (Saves the current settings so they persist after reopening the app)
@@ -39,3 +40,4 @@ As i know these firmwares are supported and working if you know any more please 
 ## Feature ideas:
 - A function to allow you to add multiple nfc items to a playlist at once
 - A view playlist function which only shows the name of the playlist items excluding the file path
+- The ability to either make the playlist controlled by the user or by a timed interval or both based on users settings
