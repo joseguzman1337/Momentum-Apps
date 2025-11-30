@@ -36,7 +36,6 @@ fs_ctx_t g; //static, extern in .h
 
 void fs_notify_success(void) {
     NotificationApp* notification = furi_record_open(RECORD_NOTIFICATION);
-    // notification_message(notification, &sequence_single_vibro);
     notification_message(notification, &sequence_success);
     furi_record_close(RECORD_NOTIFICATION);
 }
@@ -44,6 +43,12 @@ void fs_notify_success(void) {
 void fs_notify_error(void) {
     NotificationApp* notification = furi_record_open(RECORD_NOTIFICATION);
     notification_message(notification, &sequence_error);
+    furi_record_close(RECORD_NOTIFICATION);
+}
+
+void fs_notify_vibro(void) {
+    NotificationApp* notification = furi_record_open(RECORD_NOTIFICATION);
+    notification_message(notification, &sequence_single_vibro);
     furi_record_close(RECORD_NOTIFICATION);
 }
 
@@ -62,6 +67,12 @@ void fs_notify_led_green(void) {
 void fs_notify_led_blue(void) {
     NotificationApp* notification = furi_record_open(RECORD_NOTIFICATION);
     notification_message(notification, &sequence_blink_blue_10);
+    furi_record_close(RECORD_NOTIFICATION);
+}
+
+void fs_notify_led_cyan(void) {
+    NotificationApp* notification = furi_record_open(RECORD_NOTIFICATION);
+    notification_message(notification, &sequence_blink_cyan_10);
     furi_record_close(RECORD_NOTIFICATION);
 }
 
@@ -207,6 +218,143 @@ static uint8_t fs_crc8(const uint8_t* data, size_t len) {   // CRC-8-ATM, polyno
     return crc;
 }
 
+typedef enum {
+    FS_PARTS_MODE_NONE = 0,
+    FS_PARTS_MODE_BLOCKS_PER_PART, // B >= N
+    FS_PARTS_MODE_PARTS_PER_BLOCK  // B <  N
+} fs_parts_mode_t;
+
+static struct {
+    uint32_t         B;     // block_count
+    uint32_t         N;     // parts count (= FS_PARTS_COUNT)
+    fs_parts_mode_t  mode;
+    // Bitmap of parts received, 1 bit = part full
+    uint8_t          bits[FS_PARTS_BYTES];
+
+    // If B>=N, then each part has at least 1 block, so missing[] >= 1 always
+    uint32_t         seg_start[FS_PARTS_COUNT];
+    uint32_t         seg_end  [FS_PARTS_COUNT];
+    uint32_t         missing  [FS_PARTS_COUNT]; // >=1, monotonically decrease to 0
+} fs_parts;
+
+static inline void _parts_bit_set(uint32_t s) {
+    fs_parts.bits[s >> 3] |= (uint8_t)(1u << (s & 7u));
+}
+static inline uint8_t _parts_bit_get(uint32_t s) {
+    return (fs_parts.bits[s >> 3] >> (s & 7u)) & 1u;
+}
+
+static inline uint32_t _scale_floor_u32(uint32_t x, uint32_t mul, uint32_t den) {
+    return (uint32_t)(((uint64_t)x * (uint64_t)mul) / (uint64_t)den);
+}
+
+// Init pre-calculated if B>=N
+static void _init_blocks_per_part(void) {
+    const uint32_t B = fs_parts.B;
+    const uint32_t N = fs_parts.N;
+
+    for (uint32_t s = 0; s < N; ++s) {
+        uint32_t start = _scale_floor_u32(s,     B, N);
+        uint32_t end   = _scale_floor_u32(s + 1, B, N) - 1u;
+        fs_parts.seg_start[s] = start;
+        fs_parts.seg_end[s]   = end;
+        fs_parts.missing[s]   = (end >= start) ? (end - start + 1u) : 0u; // if B>=N, then always >=1
+    }
+}
+
+bool fs_parts_init(uint32_t block_count) {
+    memset(&fs_parts, 0, sizeof(fs_parts));
+    fs_parts.N = FS_PARTS_COUNT;
+    fs_parts.B = block_count;
+
+    if (fs_parts.N == 0) {
+        fs_parts.mode = FS_PARTS_MODE_NONE;
+        return false;
+    }
+
+    memset(fs_parts.bits, 0, sizeof(fs_parts.bits));
+
+    if (fs_parts.B == 0) {
+        fs_parts.mode = FS_PARTS_MODE_NONE;
+        return true;
+    }
+
+    if (fs_parts.B >= fs_parts.N) {
+        fs_parts.mode = FS_PARTS_MODE_BLOCKS_PER_PART;
+        _init_blocks_per_part();
+    } else {
+        fs_parts.mode = FS_PARTS_MODE_PARTS_PER_BLOCK;  // no need to pre-calculate anything
+    }
+    return true;
+}
+
+void fs_parts_deinit(void) {
+    memset(&fs_parts, 0, sizeof(fs_parts));
+}
+
+void fs_parts_on_block_set(uint32_t i) {
+    if (fs_parts.B == 0 || fs_parts.N == 0 || fs_parts.mode == FS_PARTS_MODE_NONE) return;
+    if (i >= fs_parts.B) return; // out of range
+
+    if (fs_parts.mode == FS_PARTS_MODE_BLOCKS_PER_PART) {
+        // Find part that block i belongs to
+        uint32_t s = _scale_floor_u32(i, fs_parts.N, fs_parts.B);
+        if (s >= fs_parts.N) return; // bounds check
+
+        // If already set, do nothing
+        if (_parts_bit_get(s)) return;
+
+        // Decrement "how many still not received"
+        if (fs_parts.missing[s] > 0) {
+            fs_parts.missing[s]--;
+            if (fs_parts.missing[s] == 0) {
+                _parts_bit_set(s);
+            }
+        }
+    } else {
+        // FS_PARTS_MODE_PARTS_PER_BLOCK: block covers range of parts [sf .. sl]
+        // sf = floor(i*N/B), sl = floor((i+1)*N/B) - 1
+        uint32_t sf = _scale_floor_u32(i,     fs_parts.N, fs_parts.B);
+        uint32_t sl = _scale_floor_u32(i + 1, fs_parts.N, fs_parts.B);
+        if (sl > 0) sl -= 1u;
+
+        if (sf >= fs_parts.N) return;
+        if (sl >= fs_parts.N) sl = fs_parts.N - 1u;
+        if (sf >  sl)  return;
+
+        // Set bits. This is idempotent, each bit is set at most once per session.
+        for (uint32_t s = sf; s <= sl; ++s) {
+            _parts_bit_set(s);
+        }
+    }
+}
+
+int fs_parts_get(uint32_t part_index) {
+    if (part_index >= fs_parts.N || fs_parts.N == 0) return -1;
+    return _parts_bit_get(part_index) ? 1 : 0;
+}
+
+void fs_parts_bitmap_copy(uint8_t* dst) {
+    if (!dst) return;
+    memcpy(dst, fs_parts.bits, FS_PARTS_BYTES);
+}
+
+uint32_t fs_parts_count(void) {
+    return fs_parts.N;
+}
+
+uint32_t fs_parts_block_count(void) {
+    return fs_parts.B;
+}
+
+bool fs_parts_is_ready(void) {
+    // Assume "ready" if N>0 and (B==0 or some mode selected)
+    if (fs_parts.N == 0) return false;
+    if (fs_parts.B == 0) return true;
+    return fs_parts.mode == FS_PARTS_MODE_BLOCKS_PER_PART || fs_parts.mode == FS_PARTS_MODE_PARTS_PER_BLOCK;
+}
+
+
 // ===== Helpers =====
 
 const char* fs_basename(const char* path) {
@@ -334,7 +482,7 @@ void fs_ensure_inbox_dir(void) {
     furi_record_close(RECORD_STORAGE);
 }
 
-uint8_t fs_file_create_truncate() {
+uint8_t fs_file_create_truncate(uint32_t file_size) {
     FURI_LOG_I(TAG, "fs_file_create_truncate: Creating and truncating file '%s'", g.r_file_path);
     if (g.mode != FS_MODE_RECEIVER) {
         FURI_LOG_E(TAG, "fs_file_create_truncate: Not available in SENDER mode");
@@ -353,6 +501,15 @@ uint8_t fs_file_create_truncate() {
         storage_file_free(g.file);
         furi_record_close(RECORD_STORAGE);
         return 3;
+    }
+
+    // UNUSED(file_size);
+    if(!storage_file_seek(g.file, file_size, true)) {
+        FURI_LOG_E(TAG, "fs_file_create_truncate: Failed to seek to offset %lu", file_size);
+        storage_file_close(g.file);
+        storage_file_free(g.file);
+        furi_record_close(RECORD_STORAGE);
+        return 4;
     }
 
     storage_file_close(g.file);
@@ -586,6 +743,7 @@ void fs_deinit(void) {
 
     // free block map
     fs_map_deinit();
+    fs_parts_deinit();
 
     // clear callbacks and other pointers to avoid use-after-free
     g.cb_send_bytes = NULL;
@@ -728,6 +886,7 @@ void fs_idle(void) {
                     furi_delay_ms((uint8_t)((furi_get_tick() % 30))); // Random jitter, ms
 
                     fs_send_request(nbyte_start, nbyte_end);
+                    fs_notify_led_cyan();
                 }
             }
             g.last_rx_ms = now; // debounce timer
@@ -738,33 +897,38 @@ void fs_idle(void) {
             g.r_locked = false; // release session lock
             g.r_locked_tx_id = 0;
             g.r_blocks_received = 0;
+
             fs_map_deinit(); // reset block map
+            fs_parts_deinit(); // reset parts map
 
             // Calculate MD5 and compare with announced
             g.storage = furi_record_open(RECORD_STORAGE);
             g.file = storage_file_alloc(g.storage);
             
-            g.r_md5[0] = 0; // Zero-initialize MD5
+            unsigned char real_md5[16];
+            real_md5[0] = 0; // Zero-initialize MD5
             FS_Error err = 0;
-            md5_calc_file(g.file, g.r_file_path, g.r_md5, &err);
+            md5_calc_file(g.file, g.r_file_path, real_md5, &err);
 
             if (err != 0) {
                 FURI_LOG_E(TAG, "fs_idle: md5_calc_file error %d", err);
             } else {
                 g.r_is_success = true;
                 FURI_LOG_I(TAG, "fs_idle: Received file md5=%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",
-                    g.r_md5[0], g.r_md5[1], g.r_md5[2], g.r_md5[3],
-                    g.r_md5[4], g.r_md5[5], g.r_md5[6], g.r_md5[7],
-                    g.r_md5[8], g.r_md5[9], g.r_md5[10], g.r_md5[11],
-                    g.r_md5[12], g.r_md5[13], g.r_md5[14], g.r_md5[15]);
+                    real_md5[0], real_md5[1], real_md5[2], real_md5[3],
+                    real_md5[4], real_md5[5], real_md5[6], real_md5[7],
+                    real_md5[8], real_md5[9], real_md5[10], real_md5[11],
+                    real_md5[12], real_md5[13], real_md5[14], real_md5[15]);
             }
+
+            // real_md5[12] = 1;    // Uncomment to test negative case, force corrupt hash
 
             storage_file_free(g.file);
             furi_record_close(RECORD_STORAGE);
             g.storage = NULL;
 
-            // compare g.r_md5 with g.r_md5 from ANNOUNCE
-            if (memcmp(g.r_md5, g.r_md5, 16) == 0) {
+            // compare real_md5 with g.r_md5 from ANNOUNCE TODO fix
+            if (memcmp(real_md5, g.r_md5, 16) == 0) {
                 FURI_LOG_I(TAG, "fs_idle: MD5 match, file received successfully");
                 g.r_is_success = true;
             } else {
@@ -813,7 +977,7 @@ static void fs_handle_announce(uint8_t tx_id, const FS_pl_announce_t* ann) {
         FURI_LOG_I(TAG, "fs_handle_announce: r_file_path='%s'", g.r_file_path);
 
         fs_ensure_inbox_dir();
-        if (fs_file_create_truncate()!= 0) {
+        if (fs_file_create_truncate(g.r_file_size)!= 0) {
             FURI_LOG_E(TAG, "fs_handle_announce: Failed to create/truncate file");
             g.r_locked = false; // release lock if failed to create file
             g.r_locked_tx_id = 0;
@@ -827,7 +991,14 @@ static void fs_handle_announce(uint8_t tx_id, const FS_pl_announce_t* ann) {
             g.r_locked_tx_id = 0;
             return;
         }
-        return;
+        // Init parts for GUI progress bar
+        FURI_LOG_I(TAG, "fs_handle_announce: Init fs_parts for %lu blocks...", g.r_blocks_needed);
+        if (!fs_parts_init(g.r_blocks_needed)) {
+            FURI_LOG_E(TAG, "fs_handle_announce: Failed to init parts");
+            return;
+        }
+
+        fs_notify_vibro();
     }
 
     // If already locked on another sender — ignore
@@ -835,6 +1006,8 @@ static void fs_handle_announce(uint8_t tx_id, const FS_pl_announce_t* ann) {
         fs_notify_led_red();
         return;
     }
+
+    fs_notify_led_blue();
 
     // You may update metadata / resend REQUEST if needed
 }
@@ -856,7 +1029,7 @@ static void fs_handle_request(uint8_t tx_id, const FS_pl_request_t* rq) {
         FURI_LOG_W(TAG, "fs_handle_request: tx_id=%d, already have blocks requested", tx_id);
         return;
     }
-    fs_notify_led_green();
+    fs_notify_led_cyan();
 
     // Normalize to blocks (uneven tail == file_size allowed)
     uint32_t start = rq->range_start;
@@ -904,7 +1077,10 @@ static void fs_handle_data(uint8_t tx_id, const FS_pl_data_t* d) {
     g.cb_write_block(d->block_number, d->data, valid_len);
 
     fs_map_set(d->block_number, 1); // mark block as received
+    fs_parts_on_block_set(d->block_number); // handle parts
     g.r_blocks_received++;
+
+    fs_notify_led_green();
 
     FURI_LOG_I(TAG, "fs_handle_data[txid=%d]: block %lu written, valid_len=%lu, "
              "blocks_received: %lu/%lu", tx_id,
@@ -923,7 +1099,7 @@ void fs_receive_callback(const uint8_t* buf, size_t size) {
     switch ((fs_pkt_type_t)pkt.packet_type) {
         case FS_PKT_ANNOUNCE: {
             FURI_LOG_I(TAG, "Received ANNOUNCE, tx_id %d", pkt.tx_id);
-            fs_notify_led_blue();
+            // fs_notify_led_blue();
             FS_pl_announce_t ann;
             fs_pl_announce_unpack(pkt.payload, &ann);
             fs_handle_announce(pkt.tx_id, &ann);
@@ -937,7 +1113,7 @@ void fs_receive_callback(const uint8_t* buf, size_t size) {
         } break;
         case FS_PKT_DATA: {
             // FURI_LOG_I(TAG, "Received DATA, tx_id %d", pkt.tx_id);
-            fs_notify_led_green();
+            // fs_notify_led_green();
             FS_pl_data_t d;
             fs_pl_data_unpack(pkt.payload, &d);
             fs_handle_data(pkt.tx_id, &d);
