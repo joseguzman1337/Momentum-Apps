@@ -66,4 +66,5 @@ typedef enum {
     EditSubmenuIndexEditLabel,
     EditSubmenuIndexEditFile,
     EditSubmenuIndexEditButton,
+    EditSubmenuIndexClearSlot,
 } SubRemEditSubmenuIndex;
