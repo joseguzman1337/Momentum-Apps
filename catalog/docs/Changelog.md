@@ -1,3 +1,6 @@
+## v1.8
+- Add default remote and clear slot features by jknlsn
+
 ## v1.7
 - Fixes for RAW files sending by WillyJL
 
