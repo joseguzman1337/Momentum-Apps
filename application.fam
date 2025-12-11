@@ -1,0 +1,12 @@
+App(
+    appid="nfc_login",
+    name="NFC PC Login",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="nfc_login",
+    requires=["gui", "usb_hid", "storage", "notification"],
+    stack_size=4 * 1024,
+    fap_category="NFC",
+    fap_author="Play2BReal",
+    fap_version="1.0",
+    fap_description="NFC based desktop login using BadUSB",
+)
