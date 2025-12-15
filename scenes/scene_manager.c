@@ -1,0 +1,1144 @@
+#include "scene_manager.h"
+#include "enroll/enroll_scene.h"
+#include "settings/settings_scene.h"
+#include "settings/passcode_canvas.h"
+#include "cards/cards_scene.h"
+#include "cards/edit_callbacks.h"
+#include "../settings/nfc_login_settings.h"
+#include "../storage/nfc_login_card_storage.h"
+#include "../scan/nfc_login_scan.h"
+#include "../hid/nfc_login_hid.h"
+#include "../crypto/nfc_login_passcode.h"
+
+// Import HAS_BLE_HID_API from HID header
+#ifndef HAS_BLE_HID_API
+    #define HAS_BLE_HID_API 0
+#endif
+
+// Local callback implementations
+static bool app_navigation_callback(void* context);
+static void app_file_browser_callback(void* context);
+static void submenu_callback(void* context, uint32_t index);
+
+void app_switch_to_view(App* app, uint32_t view_id) {
+    if(!app || !app->view_dispatcher) {
+        return;
+    }
+    app->current_view = view_id;
+    view_dispatcher_switch_to_view(app->view_dispatcher, view_id);
+}
+
+void scene_manager_init(App* app) {
+    app->view_dispatcher = view_dispatcher_alloc();
+    view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
+    view_dispatcher_set_event_callback_context(app->view_dispatcher, app);
+    view_dispatcher_set_custom_event_callback(app->view_dispatcher, app_custom_event_callback);
+    view_dispatcher_set_navigation_event_callback(app->view_dispatcher, app_navigation_callback);
+
+    app->submenu = submenu_alloc();
+    submenu_add_item(app->submenu, "Add NFC Card", SubmenuAddCard, submenu_callback, app);
+    submenu_add_item(app->submenu, "List Cards", SubmenuListCards, submenu_callback, app);
+    submenu_add_item(app->submenu, "Start Scan", SubmenuStartScan, submenu_callback, app);
+    submenu_add_item(app->submenu, "Settings", SubmenuSettings, submenu_callback, app);
+    view_dispatcher_add_view(app->view_dispatcher, ViewSubmenu, submenu_get_view(app->submenu));
+
+    app->text_input = text_input_alloc();
+#ifdef HAS_MOMENTUM_SUPPORT
+    if(app->text_input) text_input_show_illegal_symbols(app->text_input, true);
+#endif
+    view_dispatcher_add_view(app->view_dispatcher, ViewTextInput, text_input_get_view(app->text_input));
+
+    app->widget = widget_alloc();
+    View* widget_view = widget_get_view(app->widget);
+    view_dispatcher_add_view(app->view_dispatcher, ViewWidget, widget_view);
+    view_set_input_callback(widget_view, app_widget_view_input_handler);
+    view_set_context(widget_view, app);
+    
+    // Add custom draw callback to widget view for passcode canvas drawing
+    // We'll handle this in the widget rendering functions
+
+    app->fb_output_path = furi_string_alloc();
+    app->file_browser = file_browser_alloc(app->fb_output_path);
+    file_browser_configure(
+        app->file_browser,
+        ".nfc",
+        "/ext/nfc",
+        true,
+        true,
+        NULL,
+        false);
+    file_browser_set_callback(app->file_browser, app_file_browser_callback, app);
+    view_dispatcher_add_view(app->view_dispatcher, ViewFileBrowser, file_browser_get_view(app->file_browser));
+
+    app->byte_input = byte_input_alloc();
+    view_dispatcher_add_view(app->view_dispatcher, ViewByteInput, byte_input_get_view(app->byte_input));
+
+    app->passcode_canvas_view = passcode_canvas_view_alloc(app);
+    if(app->passcode_canvas_view) {
+        // Ensure context is set after adding to dispatcher
+        view_set_context(app->passcode_canvas_view, app);
+        view_dispatcher_add_view(app->view_dispatcher, ViewPasscodeCanvas, app->passcode_canvas_view);
+    }
+}
+
+// Navigation callback: exit app on Back when on main menu
+static bool app_navigation_callback(void* context) {
+    App* app = context;
+    
+    // Block Back button if lockscreen is active (widget_state == 7)
+    // This prevents Back from bypassing the lockscreen
+    if(app->passcode_prompt_active && app->widget_state == 7) {
+        return true; // Block navigation - user must enter passcode
+    }
+    
+    if(app->current_view == ViewSubmenu) {
+        // After unlock, handle Back button behavior
+        // Short press Back - ignore it (stay in app)
+        // Long press Back - exit app
+        // Check if this is a long press
+        // Note: InputTypeLong is not available in navigation callback, so we'll handle it in submenu view
+        // For now, just exit on Back from submenu (normal behavior)
+        if(app->enrollment_scanning) {
+            app->enrollment_scanning = false;
+            if(app->enroll_scan_thread) {
+                furi_thread_join(app->enroll_scan_thread);
+                furi_thread_free(app->enroll_scan_thread);
+                app->enroll_scan_thread = NULL;
+            }
+        }
+        if(app->scanning) {
+            app->scanning = false;
+            // Wait a bit for scan thread to exit HID operations
+            furi_delay_ms(100);
+            if(app->scan_thread) {
+                furi_thread_join(app->scan_thread);
+                furi_thread_free(app->scan_thread);
+                app->scan_thread = NULL;
+            }
+            // Ensure HID is cleaned up if scan thread was interrupted
+            if(app->previous_usb_config || app->hid_mode == HidModeBle) {
+                deinitialize_hid_with_restore_and_mode(app->previous_usb_config, app->hid_mode);
+                app->previous_usb_config = NULL;
+            }
+        }
+        view_dispatcher_stop(app->view_dispatcher);
+        return true;
+    } else if(app->current_view == ViewTextInput) {
+        if(app->edit_state != EditStateNone) {
+            app->edit_state = EditStateNone;
+            app->widget_state = 3;
+            app_render_edit_menu(app);
+            app_switch_to_view(app, ViewWidget);
+        } else if(app->enrollment_state != EnrollmentStateNone) {
+            app->enrollment_state = EnrollmentStateNone;
+            app_switch_to_view(app, ViewSubmenu);
+        } else {
+            app_switch_to_view(app, ViewSubmenu);
+        }
+        return true;
+    } else if(app->current_view == ViewFileBrowser) {
+        file_browser_stop(app->file_browser);
+        app_switch_to_view(app, ViewWidget);
+        return true;
+    } else if(app->current_view == ViewByteInput) {
+        if(app->enrollment_state != EnrollmentStateNone) {
+            // During enrollment, canceling UID entry should go back to scanning or submenu
+            app->enrollment_state = EnrollmentStateNone;
+            app_switch_to_view(app, ViewSubmenu);
+        } else {
+            app->edit_state = EditStateNone;
+            app->widget_state = 3;
+            app_render_edit_menu(app);
+            app_switch_to_view(app, ViewWidget);
+        }
+        return true;
+    } else if(app->current_view == ViewWidget) {
+        // Don't allow Back to bypass lockscreen (widget_state == 7) or setup (widget_state == 6)
+        if(app->passcode_prompt_active && (app->widget_state == 7 || app->widget_state == 6)) {
+            // Block Back button - user must enter passcode or hold Back to exit
+            // Only allow exit if it's a long press (handled in widget input handler)
+            return true;
+        }
+        
+        if(app->enrollment_scanning) {
+            app->enrollment_scanning = false;
+            if(app->enroll_scan_thread) {
+                furi_thread_join(app->enroll_scan_thread);
+                furi_thread_free(app->enroll_scan_thread);
+                app->enroll_scan_thread = NULL;
+            }
+        }
+        if(app->scanning) {
+            app->scanning = false;
+            // Wait a bit for scan thread to exit HID operations
+            furi_delay_ms(100);
+            if(app->scan_thread) {
+                furi_thread_join(app->scan_thread);
+                furi_thread_free(app->scan_thread);
+                app->scan_thread = NULL;
+            }
+            // Ensure HID is cleaned up if scan thread was interrupted
+            if(app->previous_usb_config || app->hid_mode == HidModeBle) {
+                deinitialize_hid_with_restore_and_mode(app->previous_usb_config, app->hid_mode);
+                app->previous_usb_config = NULL;
+            }
+        }
+        app_switch_to_view(app, ViewSubmenu);
+        return true;
+    }
+    return false;
+}
+
+static void app_file_browser_callback(void* context) {
+    App* app = context;
+    const char* path = furi_string_get_cstr(app->fb_output_path);
+
+    if(app->selecting_keyboard_layout) {
+        if(!path || path[0] == '\0') {
+            app->selecting_keyboard_layout = false;
+            app->widget_state = 4;
+            app_render_settings(app);
+            app_switch_to_view(app, ViewWidget);
+            return;
+        }
+
+        const char* filename = strrchr(path, '/');
+        filename = filename ? filename + 1 : path;
+
+        if(strstr(filename, ".kl") != NULL) {
+            strncpy(app->keyboard_layout, filename, sizeof(app->keyboard_layout) - 1);
+            app->keyboard_layout[sizeof(app->keyboard_layout) - 1] = '\0';
+            app_save_settings(app);
+            notification_message(app->notification, &sequence_success);
+        } else {
+            notification_message(app->notification, &sequence_error);
+        }
+
+        app->selecting_keyboard_layout = false;
+        app->widget_state = 4;
+        app_render_settings(app);
+        app_switch_to_view(app, ViewWidget);
+        return;
+    }
+
+    if(!path || path[0] == '\0') {
+        app_switch_to_view(app, ViewWidget);
+        return;
+    }
+
+    if(app_import_nfc_file(app, path)) {
+        app->enrollment_state = EnrollmentStatePassword;
+        memset(app->enrollment_card.password, 0, sizeof(app->enrollment_card.password));
+        text_input_reset(app->text_input);
+        text_input_set_header_text(app->text_input, "Enter Password");
+        text_input_set_result_callback(
+            app->text_input,
+            app_text_input_result_callback,
+            app,
+            app->enrollment_card.password,
+            sizeof(app->enrollment_card.password),
+            true);
+#ifdef HAS_MOMENTUM_SUPPORT
+        text_input_show_illegal_symbols(app->text_input, true);
+#endif
+        app_switch_to_view(app, ViewTextInput);
+    } else {
+        notification_message(app->notification, &sequence_error);
+        app_switch_to_view(app, ViewWidget);
+    }
+}
+
+static void submenu_callback(void* context, uint32_t index) {
+    App* app = context;
+
+    switch(index) {
+    case SubmenuAddCard:
+        view_dispatcher_send_custom_event(app->view_dispatcher, EventAddCardStart);
+        break;
+    case SubmenuListCards:
+        app->widget_state = 2;
+        app->selected_card = 0;
+        app->card_list_scroll_offset = 0;
+        app_render_card_list(app);
+        app_switch_to_view(app, ViewWidget);
+        break;
+    case SubmenuStartScan:
+        if(!app->scanning) {
+            app->scanning = true;
+            app->scan_thread = furi_thread_alloc();
+            furi_thread_set_name(app->scan_thread, "NfcScan");
+            furi_thread_set_stack_size(app->scan_thread, 4 * 1024);
+            furi_thread_set_context(app->scan_thread, app);
+            furi_thread_set_callback(app->scan_thread, app_scan_thread);
+            furi_thread_start(app->scan_thread);
+
+            widget_reset(app->widget);
+            app->widget_state = 1;
+            widget_add_string_element(app->widget, 0, 0, AlignLeft, AlignTop, FontPrimary, "Scanning for NFC...");
+            widget_add_string_element(app->widget, 0, 20, AlignLeft, AlignTop, FontSecondary, "Hold card to reader");
+            widget_add_string_element(app->widget, 0, 40, AlignLeft, AlignTop, FontSecondary, "Press Back to stop");
+            app_switch_to_view(app, ViewWidget);
+        }
+        break;
+    case SubmenuSettings:
+        app->widget_state = 4;
+        app->settings_menu_index = 0;
+        app->settings_scroll_offset = 0;
+        app->selecting_keyboard_layout = false;
+        app_render_settings(app);
+        app_switch_to_view(app, ViewWidget);
+        break;
+    }
+}
+
+bool app_widget_view_input_handler(InputEvent* event, void* context) {
+    App* app = context;
+    
+    // Handle Back button in lockscreen (widget_state == 7) and setup (widget_state == 6) FIRST
+    // This MUST be checked before any other Back handlers
+    if((app->widget_state == 7 || app->widget_state == 6) && event->key == InputKeyBack) {
+        if(event->type == InputTypeLong) {
+            // Long press Back - exit app entirely
+            view_dispatcher_stop(app->view_dispatcher);
+            return true;
+        }
+        // Short press Back or any other type - do absolutely nothing (block it completely)
+        return true;
+    }
+    
+    if(event->type == InputTypeShort || event->type == InputTypeRepeat) {
+        // Don't process Back button if we're in lockscreen or setup (already handled above)
+        if((app->widget_state == 7 || app->widget_state == 6) && event->key == InputKeyBack) {
+            return true;
+        }
+        if(event->key == InputKeyBack) {
+            if(app->scanning) {
+                app->scanning = false;
+                // Wait a bit for scan thread to exit HID operations
+                furi_delay_ms(100);
+                if(app->scan_thread) {
+                    furi_thread_join(app->scan_thread);
+                    furi_thread_free(app->scan_thread);
+                    app->scan_thread = NULL;
+                }
+                // Ensure HID is cleaned up if scan thread was interrupted
+                if(app->previous_usb_config || app->hid_mode == HidModeBle) {
+                    deinitialize_hid_with_restore_and_mode(app->previous_usb_config, app->hid_mode);
+                    app->previous_usb_config = NULL;
+                }
+            } else if(app->enrollment_scanning) {
+                app->enrollment_scanning = false;
+                if(app->enroll_scan_thread) {
+                    furi_thread_join(app->enroll_scan_thread);
+                    furi_thread_free(app->enroll_scan_thread);
+                    app->enroll_scan_thread = NULL;
+                }
+                app->widget_state = 0;
+            } else if(app->enrollment_state != EnrollmentStateNone) {
+                app->enrollment_state = EnrollmentStateNone;
+            } else if(app->widget_state == 4) {
+                app->widget_state = 0;
+            }
+            app_switch_to_view(app, ViewSubmenu);
+            return true;
+        }
+        if(app->widget_state == 1 && app->enrollment_scanning) {
+            // During enrollment scanning, only Right triggers manual UID entry
+            if(event->key == InputKeyRight) {
+                view_dispatcher_send_custom_event(app->view_dispatcher, EventManualUidEntry);
+                return true;
+            }
+        }
+        if(app->widget_state == 4) {
+            if(event->key == InputKeyUp) {
+                if(app->settings_menu_index > 0) {
+                    app->settings_menu_index--;
+                    if(app->settings_menu_index < app->settings_scroll_offset) {
+                        app->settings_scroll_offset = app->settings_menu_index;
+                    }
+                }
+            } else if(event->key == InputKeyDown) {
+                if(app->settings_menu_index < SETTINGS_MENU_ITEMS - 1) {
+                    app->settings_menu_index++;
+                    if(app->settings_menu_index >= app->settings_scroll_offset + SETTINGS_VISIBLE_ITEMS) {
+                        app->settings_scroll_offset = app->settings_menu_index - (SETTINGS_VISIBLE_ITEMS - 1);
+                    }
+                }
+            } else if(event->key == InputKeyOk) {
+                if(app->settings_menu_index == 0) {
+                    // HID Mode toggle - handled by Left/Right
+                    // This is just a placeholder, actual toggle is in Left/Right handler
+                } else if(app->settings_menu_index == 1) {
+                    app->selecting_keyboard_layout = true;
+                    furi_string_set(app->fb_output_path, BADUSB_LAYOUTS_DIR);
+                    file_browser_configure(
+                        app->file_browser,
+                        ".kl",
+                        BADUSB_LAYOUTS_DIR,
+                        true,
+                        true,
+                        NULL,
+                        false);
+                    file_browser_start(app->file_browser, app->fb_output_path);
+                    app_switch_to_view(app, ViewFileBrowser);
+                    return true;
+                } else if(app->settings_menu_index == 2) {
+                    // Input Delay - handled by Left/Right
+                } else if(app->settings_menu_index == 3) {
+                    app->append_enter = !app->append_enter;
+                    app_save_settings(app);
+                    notification_message(app->notification, &sequence_success);
+                    app_render_settings(app);
+                    return true;
+                } else if(app->settings_menu_index == 4) {
+                    // Reset Passcode - try to preserve cards if hardware-encrypted
+                    // Load cards first (will try hardware decryption if passcode decryption fails)
+                    app_load_cards(app);
+                    size_t cards_loaded = app->card_count;
+                    
+                    FURI_LOG_I(TAG, "app_widget_view_input: Reset passcode - loaded %zu cards (hardware-encrypted can be preserved)", cards_loaded);
+                    
+                    // Delete file to reset passcode
+                    delete_cards_and_reset_passcode();
+                    
+                    // Reset passcode state
+                    app->passcode_failed_attempts = 0;
+                    app->passcode_sequence_len = 0;
+                    memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
+                    
+                    // If cards were loaded (hardware-encrypted), they're preserved in app->cards
+                    // They'll be re-saved after new passcode is set
+                    if(cards_loaded == 0) {
+                        app->card_count = 0; // No cards could be loaded (passcode-encrypted), all deleted
+                    }
+                    // else: cards are preserved in app->cards array, will be saved after new passcode
+                    
+                    app->widget_state = 6; // Passcode setup state
+                    app->passcode_prompt_active = true;
+                    app->passcode_sequence_len = 0;
+                    memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
+                    app_switch_to_view(app, ViewPasscodeCanvas);
+                    notification_message(app->notification, &sequence_success);
+                    return true;
+                } else if(app->settings_menu_index == 5) {
+                    // Toggle Disable Passcode
+                    app->passcode_disabled = !app->passcode_disabled;
+                    app_save_settings(app);
+                    notification_message(app->notification, &sequence_success);
+                    app_render_settings(app);
+                    return true;
+                } else if(app->settings_menu_index == 6) {
+                    app->widget_state = 5;
+                    app->credits_page = 0;
+                    widget_reset(app->widget);
+                    app_render_credits(app);
+                    return true;
+                }
+            } else if(event->key == InputKeyLeft || event->key == InputKeyRight) {
+                if(app->settings_menu_index == 0) {
+                    // Toggle HID Mode between USB and BLE
+                    HidMode old_mode = app->hid_mode;
+                    app->hid_mode = (app->hid_mode == HidModeUsb) ? HidModeBle : HidModeUsb;
+                    
+                    // Start/stop BLE advertising based on mode change
+                    if(old_mode == HidModeUsb && app->hid_mode == HidModeBle) {
+                        // Switching to BLE - start advertising
+                        app_start_ble_advertising();
+                    } else if(old_mode == HidModeBle && app->hid_mode == HidModeUsb) {
+                        // Switching to USB - stop BLE advertising
+                        app_stop_ble_advertising();
+                    }
+                    
+                    app_save_settings(app);
+                    notification_message(app->notification, &sequence_success);
+                } else if(app->settings_menu_index == 1) {
+                    // Keyboard Layout cycling
+                    Storage* storage = furi_record_open(RECORD_STORAGE);
+                    File* dir = storage_file_alloc(storage);
+                    char layouts[MAX_LAYOUTS][64];
+                    size_t layout_count = 0;
+                    const char* current_layout = app->keyboard_layout;
+                    int current_index = -1;
+
+                    if(storage_dir_open(dir, BADUSB_LAYOUTS_DIR)) {
+                        FileInfo file_info;
+                        char name[64];
+                        while(storage_dir_read(dir, &file_info, name, sizeof(name))) {
+                            const char* ext = strrchr(name, '.');
+                            if(ext && strcmp(ext, ".kl") == 0) {
+                                if(layout_count < MAX_LAYOUTS) {
+                                    strncpy(layouts[layout_count], name, sizeof(layouts[0]) - 1);
+                                    layouts[layout_count][sizeof(layouts[0]) - 1] = '\0';
+                                    if(strcmp(layouts[layout_count], current_layout) == 0) {
+                                        current_index = (int)layout_count;
+                                    }
+                                    layout_count++;
+                                }
+                            }
+                        }
+                        storage_dir_close(dir);
+                    }
+                    storage_file_free(dir);
+                    furi_record_close(RECORD_STORAGE);
+
+                    if(layout_count < MAX_LAYOUTS) {
+                        for(size_t i = layout_count; i > 0; i--) {
+                            strncpy(layouts[i], layouts[i-1], sizeof(layouts[0]) - 1);
+                            layouts[i][sizeof(layouts[0]) - 1] = '\0';
+                        }
+                        strncpy(layouts[0], "en-US.kl", sizeof(layouts[0]) - 1);
+                        layouts[0][sizeof(layouts[0]) - 1] = '\0';
+                        layout_count++;
+                        if(current_index >= 0) current_index++;
+                        else if(strcmp(current_layout, "en-US.kl") == 0) current_index = 0;
+                    }
+
+                    if(layout_count > 0) {
+                        if(current_index < 0) current_index = 0;
+
+                        if(event->key == InputKeyLeft) {
+                            current_index = (current_index > 0) ? current_index - 1 : (int)(layout_count - 1);
+                        } else {
+                            current_index = (int)((current_index + 1) % layout_count);
+                        }
+
+                        strncpy(app->keyboard_layout, layouts[current_index], sizeof(app->keyboard_layout) - 1);
+                        app->keyboard_layout[sizeof(app->keyboard_layout) - 1] = '\0';
+                        app_save_settings(app);
+                        notification_message(app->notification, &sequence_success);
+                    }
+                } else if(app->settings_menu_index == 2) {
+                    // Input Delay cycling
+                    if(event->key == InputKeyLeft) {
+                        if(app->input_delay_ms == 200) {
+                            app->input_delay_ms = 100;
+                        } else if(app->input_delay_ms == 100) {
+                            app->input_delay_ms = 50;
+                        } else if(app->input_delay_ms == 50) {
+                            app->input_delay_ms = 10;
+                        } else {
+                            app->input_delay_ms = 200;
+                        }
+                    } else {
+                        if(app->input_delay_ms == 10) {
+                            app->input_delay_ms = 50;
+                        } else if(app->input_delay_ms == 50) {
+                            app->input_delay_ms = 100;
+                        } else if(app->input_delay_ms == 100) {
+                            app->input_delay_ms = 200;
+                        } else {
+                            app->input_delay_ms = 10;
+                        }
+                    }
+                    app_save_settings(app);
+                    notification_message(app->notification, &sequence_success);
+                } else if(app->settings_menu_index == 3) {
+                    // Append Enter - handled by OK button
+                } else if(app->settings_menu_index == 1) {
+                    Storage* storage = furi_record_open(RECORD_STORAGE);
+                    File* dir = storage_file_alloc(storage);
+                    char layouts[MAX_LAYOUTS][64];
+                    size_t layout_count = 0;
+                    const char* current_layout = app->keyboard_layout;
+                    int current_index = -1;
+
+                    if(storage_dir_open(dir, BADUSB_LAYOUTS_DIR)) {
+                        FileInfo file_info;
+                        char name[64];
+                        while(storage_dir_read(dir, &file_info, name, sizeof(name))) {
+                            const char* ext = strrchr(name, '.');
+                            if(ext && strcmp(ext, ".kl") == 0) {
+                                if(layout_count < MAX_LAYOUTS) {
+                                    strncpy(layouts[layout_count], name, sizeof(layouts[0]) - 1);
+                                    layouts[layout_count][sizeof(layouts[0]) - 1] = '\0';
+                                    if(strcmp(layouts[layout_count], current_layout) == 0) {
+                                        current_index = (int)layout_count;
+                                    }
+                                    layout_count++;
+                                }
+                            }
+                        }
+                        storage_dir_close(dir);
+                    }
+                    storage_file_free(dir);
+                    furi_record_close(RECORD_STORAGE);
+
+                    if(layout_count < MAX_LAYOUTS) {
+                        for(size_t i = layout_count; i > 0; i--) {
+                            strncpy(layouts[i], layouts[i-1], sizeof(layouts[0]) - 1);
+                            layouts[i][sizeof(layouts[0]) - 1] = '\0';
+                        }
+                        strncpy(layouts[0], "en-US.kl", sizeof(layouts[0]) - 1);
+                        layouts[0][sizeof(layouts[0]) - 1] = '\0';
+                        layout_count++;
+                        if(current_index >= 0) current_index++;
+                        else if(strcmp(current_layout, "en-US.kl") == 0) current_index = 0;
+                    }
+
+                    if(layout_count > 0) {
+                        if(current_index < 0) current_index = 0;
+
+                        if(event->key == InputKeyLeft) {
+                            current_index = (current_index > 0) ? current_index - 1 : (int)(layout_count - 1);
+                        } else {
+                            current_index = (int)((current_index + 1) % layout_count);
+                        }
+
+                        strncpy(app->keyboard_layout, layouts[current_index], sizeof(app->keyboard_layout) - 1);
+                        app->keyboard_layout[sizeof(app->keyboard_layout) - 1] = '\0';
+                        app_save_settings(app);
+                        notification_message(app->notification, &sequence_success);
+                    }
+                } else if(app->settings_menu_index == 3) {
+                    // Toggle HID Mode between USB and BLE
+                    app->hid_mode = (app->hid_mode == HidModeUsb) ? HidModeBle : HidModeUsb;
+                    app_save_settings(app);
+                    notification_message(app->notification, &sequence_success);
+                }
+            }
+            app_render_settings(app);
+            return true;
+        }
+        if(app->widget_state == 5) {
+            if(event->key == InputKeyLeft) {
+                if(app->credits_page > 0) {
+                    app->credits_page--;
+                } else {
+                    app->credits_page = CREDITS_PAGES - 1;
+                }
+                app_render_credits(app);
+                return true;
+            } else if(event->key == InputKeyRight) {
+                if(app->credits_page < CREDITS_PAGES - 1) {
+                    app->credits_page++;
+                } else {
+                    app->credits_page = 0;
+                }
+                app_render_credits(app);
+                return true;
+            } else if(event->key == InputKeyBack) {
+                app->widget_state = 4;
+                app_render_settings(app);
+                return true;
+            }
+            return true;
+        }
+        if(app->widget_state == 6) {
+            // Passcode setup prompt - capture button sequence
+            // Handle Back button first (both short and long)
+            if(event->key == InputKeyBack) {
+                if(event->type == InputTypeLong) {
+                    // Exit app when Back is held on setup prompt
+                    view_dispatcher_stop(app->view_dispatcher);
+                    return true;
+                }
+                // Short press Back - do nothing (prevent accidental exit)
+                return true;
+            }
+            
+            if(event->type == InputTypeShort) {
+                const char* button_name = NULL;
+                bool add_button = false;
+                
+                if(event->key == InputKeyUp) {
+                    button_name = "up";
+                    add_button = true;
+                } else if(event->key == InputKeyDown) {
+                    button_name = "down";
+                    add_button = true;
+                } else if(event->key == InputKeyLeft) {
+                    button_name = "left";
+                    add_button = true;
+                } else if(event->key == InputKeyRight) {
+                    button_name = "right";
+                    add_button = true;
+                } else if(event->key == InputKeyOk) {
+                    // Check if we're on Security Reset screen (no sequence entered yet)
+                    if(app->passcode_sequence_len == 0) {
+                        // Transition from Security Reset to Setup Passcode screen
+                        app->widget_state = 6; // Passcode setup state
+                        app_switch_to_view(app, ViewPasscodeCanvas);
+                        return true;
+                    }
+                    
+                    // Finish entering sequence - only allow if 4-8 buttons
+                    app->passcode_sequence[app->passcode_sequence_len] = '\0';
+                    size_t button_count = count_buttons_in_sequence(app->passcode_sequence);
+                    
+                    // Check if button count is valid (4-8)
+                    if(button_count < MIN_PASSCODE_BUTTONS || button_count > MAX_PASSCODE_BUTTONS) {
+                        // Invalid button count - show error
+                        widget_reset(app->widget);
+                        widget_add_string_element(app->widget, 0, 0, AlignLeft, AlignTop, FontPrimary, "Setup Passcode");
+                        char error_msg[64];
+                        snprintf(error_msg, sizeof(error_msg), "Need %d-%d buttons", MIN_PASSCODE_BUTTONS, MAX_PASSCODE_BUTTONS);
+                        widget_add_string_element(app->widget, 0, 12, AlignLeft, AlignTop, FontSecondary, error_msg);
+                        widget_add_string_element(app->widget, 0, 24, AlignLeft, AlignTop, FontSecondary, "Press any button");
+                        notification_message(app->notification, &sequence_error);
+                        app->passcode_sequence_len = 0;
+                        memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
+                        return true;
+                    }
+                    
+                    // Save the sequence (encrypted in settings)
+                    if(set_passcode_sequence(app->passcode_sequence)) {
+                        notification_message(app->notification, &sequence_success);
+                        
+                        // Small delay to ensure settings are saved
+                        furi_delay_ms(100);
+                        
+                        // If cards were preserved in memory (from reset), save them now with new passcode
+                        if(app->card_count > 0) {
+                            FURI_LOG_I(TAG, "app_widget_view_input: Saving %zu preserved cards with new passcode", app->card_count);
+                            if(app_save_cards(app)) {
+                                FURI_LOG_I(TAG, "app_widget_view_input: Successfully saved preserved cards");
+                            } else {
+                                FURI_LOG_E(TAG, "app_widget_view_input: Failed to save preserved cards");
+                            }
+                        } else {
+                            // Load cards (will use passcode encryption if cards exist)
+                            app_load_cards(app);
+                            FURI_LOG_I(TAG, "app_widget_view_input: Loaded %zu cards after passcode setup", app->card_count);
+                        }
+                        
+                        // Clear passcode sequence and reset state
+                        app->passcode_sequence_len = 0;
+                        memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
+                        app->widget_state = 0; // Reset widget state
+                        
+                        // Close prompt and go to submenu
+                        app->passcode_prompt_active = false;
+                        app_switch_to_view(app, ViewSubmenu);
+                        return true; // Important: return early to prevent further processing
+                    } else {
+                        notification_message(app->notification, &sequence_error);
+                        // Show error message
+                        widget_reset(app->widget);
+                        widget_add_string_element(app->widget, 0, 0, AlignLeft, AlignTop, FontPrimary, "Setup Passcode");
+                        widget_add_string_element(app->widget, 0, 12, AlignLeft, AlignTop, FontSecondary, "Failed to save");
+                        widget_add_string_element(app->widget, 0, 24, AlignLeft, AlignTop, FontSecondary, "Press any button");
+                        app->passcode_sequence_len = 0;
+                        memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
+                    }
+                    return true;
+                } else if(event->key == InputKeyBack && event->type == InputTypeLong) {
+                    // Exit app when Back is held on setup prompt
+                    view_dispatcher_stop(app->view_dispatcher);
+                    return true;
+                }
+                
+                if(add_button && button_name) {
+                    // Check current button count before adding
+                    size_t current_count = count_buttons_in_sequence(app->passcode_sequence);
+                    
+                    // Only add if we haven't reached max (8 buttons)
+                    if(current_count < MAX_PASSCODE_BUTTONS) {
+                        // Add button to sequence
+                        size_t name_len = strlen(button_name);
+                        if(app->passcode_sequence_len + name_len + 2 < MAX_PASSCODE_SEQUENCE_LEN) {
+                            if(app->passcode_sequence_len > 0) {
+                                app->passcode_sequence[app->passcode_sequence_len++] = ' ';
+                            }
+                            strcpy(app->passcode_sequence + app->passcode_sequence_len, button_name);
+                            app->passcode_sequence_len += name_len;
+                        }
+                    } else {
+                        // Max buttons reached - show notification
+                        notification_message(app->notification, &sequence_error);
+                    }
+                }
+                
+                // Canvas view will redraw automatically
+                // Just ensure we're on the canvas view
+                if(app->current_view != ViewPasscodeCanvas) {
+                    app_switch_to_view(app, ViewPasscodeCanvas);
+                }
+                return true;
+            }
+            return true;
+        }
+        
+        if(app->widget_state == 7) {
+            // Lockscreen - verify passcode
+            // Back button is already handled at the top of app_widget_view_input
+            // This ensures it's caught before navigation callback
+            
+            if(event->type == InputTypeShort) {
+                const char* button_name = NULL;
+                bool add_button = false;
+                
+                if(event->key == InputKeyUp) {
+                    button_name = "up";
+                    add_button = true;
+                } else if(event->key == InputKeyDown) {
+                    button_name = "down";
+                    add_button = true;
+                } else if(event->key == InputKeyLeft) {
+                    button_name = "left";
+                    add_button = true;
+                } else if(event->key == InputKeyRight) {
+                    button_name = "right";
+                    add_button = true;
+                } else if(event->key == InputKeyOk) {
+                    // Verify passcode
+                    if(app->passcode_sequence_len > 0) {
+                        app->passcode_sequence[app->passcode_sequence_len] = '\0';
+                        
+                        if(verify_passcode_sequence(app->passcode_sequence)) {
+                            // Correct passcode - reset failed attempts, unlock and load cards
+                            app->passcode_failed_attempts = 0;
+                            app_load_cards(app);
+                            notification_message(app->notification, &sequence_success);
+                            
+                            // Clear passcode sequence and reset state
+                            app->passcode_sequence_len = 0;
+                            memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
+                            app->widget_state = 0; // Reset widget state
+                            
+                            // Close lockscreen and go to submenu
+                            app->passcode_prompt_active = false;
+                            app_switch_to_view(app, ViewSubmenu);
+                            return true; // Important: return early to prevent further processing
+                        } else {
+                            // Wrong passcode - increment failed attempts
+                            app->passcode_failed_attempts++;
+                            FURI_LOG_W(TAG, "app_widget_view_input: Wrong passcode (attempt %u/5)", app->passcode_failed_attempts);
+                            
+                            // Check if we've reached 5 failed attempts
+                            if(app->passcode_failed_attempts >= 5) {
+                                // Delete cards.enc and reset passcode
+                                FURI_LOG_E(TAG, "app_widget_view_input: 5 failed attempts - deleting cards.enc and resetting passcode");
+                                delete_cards_and_reset_passcode();
+                                
+                                // Reset state and show setup prompt
+                                app->passcode_failed_attempts = 0;
+                                app->passcode_sequence_len = 0;
+                                memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
+                                app->card_count = 0;
+                                
+                                app->widget_state = 6; // Passcode setup state
+                                // Show security reset message briefly, then switch to canvas for setup
+                                widget_reset(app->widget);
+                                widget_add_string_element(app->widget, 0, 0, AlignLeft, AlignTop, FontPrimary, "Security Reset");
+                                widget_add_string_element(app->widget, 0, 12, AlignLeft, AlignTop, FontSecondary, "Cards deleted");
+                                widget_add_string_element(app->widget, 0, 24, AlignLeft, AlignTop, FontSecondary, "Press OK to continue");
+                                app_switch_to_view(app, ViewWidget);
+                                notification_message(app->notification, &sequence_error);
+                            } else {
+                                // Show error with remaining attempts
+                                app->passcode_sequence_len = 0;
+                                memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
+                                notification_message(app->notification, &sequence_error);
+                                
+                                // Canvas view will redraw automatically with error message
+                                // Just ensure we're on the canvas view
+                                if(app->current_view != ViewPasscodeCanvas) {
+                                    app_switch_to_view(app, ViewPasscodeCanvas);
+                                }
+                            }
+                        }
+                    }
+                    return true;
+                }
+                
+                if(add_button && button_name) {
+                    // Get stored passcode length to limit input
+                    char stored_sequence[MAX_PASSCODE_SEQUENCE_LEN];
+                    size_t stored_button_count = MAX_PASSCODE_BUTTONS; // Default to max if can't read
+                    if(get_passcode_sequence(stored_sequence, sizeof(stored_sequence))) {
+                        stored_button_count = count_buttons_in_sequence(stored_sequence);
+                    }
+                    
+                    // Check current button count before adding
+                    size_t current_count = count_buttons_in_sequence(app->passcode_sequence);
+                    
+                    // Only add if we haven't reached the stored passcode length
+                    if(current_count < stored_button_count) {
+                        // Add button to sequence
+                        size_t name_len = strlen(button_name);
+                        if(app->passcode_sequence_len + name_len + 2 < MAX_PASSCODE_SEQUENCE_LEN) {
+                            if(app->passcode_sequence_len > 0) {
+                                app->passcode_sequence[app->passcode_sequence_len++] = ' ';
+                            }
+                            strcpy(app->passcode_sequence + app->passcode_sequence_len, button_name);
+                            app->passcode_sequence_len += name_len;
+                        }
+                    } else {
+                        // Max buttons reached - show notification
+                        notification_message(app->notification, &sequence_error);
+                    }
+                    
+                    // Canvas view will redraw automatically
+                    // Just ensure we're on the canvas view
+                    if(app->current_view != ViewPasscodeCanvas) {
+                        app_switch_to_view(app, ViewPasscodeCanvas);
+                    }
+                }
+                return true;
+            }
+            return true;
+        }
+        if(app->widget_state == 3) {
+            bool was_just_entered = app->just_entered_edit_mode;
+            app->just_entered_edit_mode = false;
+            
+            if(event->key == InputKeyUp) {
+                if(app->edit_menu_index > 0) app->edit_menu_index--;
+            } else if(event->key == InputKeyDown) {
+                if(app->edit_menu_index < 3) app->edit_menu_index++;
+            } else if(event->key == InputKeyBack) {
+                app->widget_state = 2;
+            } else if(event->key == InputKeyOk && event->type == InputTypeShort) {
+                if(was_just_entered) {
+                    app_render_edit_menu(app);
+                    return true;
+                }
+                if(app->edit_menu_index == 0) {
+                    app->edit_state = EditStateName;
+                    text_input_reset(app->text_input);
+                    text_input_set_header_text(app->text_input, "Edit Name");
+                    text_input_set_result_callback(
+                        app->text_input,
+                        app_edit_text_result_callback,
+                        app,
+                        app->cards[app->edit_card_index].name,
+                        sizeof(app->cards[app->edit_card_index].name),
+                        false);
+                    app_switch_to_view(app, ViewTextInput);
+#ifdef HAS_MOMENTUM_SUPPORT
+                    text_input_show_illegal_symbols(app->text_input, true);
+#endif
+                    return true;
+                } else if(app->edit_menu_index == 1) {
+                    app->edit_state = EditStatePassword;
+                    text_input_reset(app->text_input);
+                    text_input_set_header_text(app->text_input, "Edit Password");
+                    text_input_set_result_callback(
+                        app->text_input,
+                        app_edit_text_result_callback,
+                        app,
+                        app->cards[app->edit_card_index].password,
+                        sizeof(app->cards[app->edit_card_index].password),
+                        false);
+#ifdef HAS_MOMENTUM_SUPPORT
+                    text_input_show_illegal_symbols(app->text_input, true);
+#endif
+                    app_switch_to_view(app, ViewTextInput);
+                    return true;
+                } else if(app->edit_menu_index == 2) {
+                    app->edit_state = EditStateUid;
+                    memset(app->edit_uid_bytes, 0, sizeof(app->edit_uid_bytes));
+                    // Use actual UID length, but allow up to MAX_UID_LEN for editing
+                    if(app->cards[app->edit_card_index].uid_len > 0 && 
+                       app->cards[app->edit_card_index].uid_len <= MAX_UID_LEN) {
+                        app->edit_uid_len = app->cards[app->edit_card_index].uid_len;
+                        memcpy(app->edit_uid_bytes, app->cards[app->edit_card_index].uid, 
+                               app->cards[app->edit_card_index].uid_len);
+                    } else {
+                        // New UID - start with 4 bytes (common NFC card size)
+                        app->edit_uid_len = 4;
+                    }
+                    byte_input_set_header_text(app->byte_input, "Edit UID (hex)");
+                    byte_input_set_result_callback(
+                        app->byte_input,
+                        app_edit_uid_byte_input_done,
+                        NULL,
+                        app,
+                        app->edit_uid_bytes,
+                        app->edit_uid_len);
+                    app_switch_to_view(app, ViewByteInput);
+                    return true;
+                } else if(app->edit_menu_index == 3) {
+                    if(app->edit_card_index < app->card_count) {
+                        for(size_t i = app->edit_card_index; i + 1 < app->card_count; i++) {
+                            app->cards[i] = app->cards[i + 1];
+                        }
+                        app->card_count--;
+                        if(app->has_active_selection) {
+                            if(app->active_card_index == app->edit_card_index) {
+                                app->has_active_selection = false;
+                            } else if(app->active_card_index > app->edit_card_index) {
+                                app->active_card_index--;
+                            }
+                        }
+                        if(app_save_cards(app)) {
+                            notification_message(app->notification, &sequence_success);
+                        } else {
+                            notification_message(app->notification, &sequence_error);
+                            FURI_LOG_E(TAG, "Failed to save after card deletion");
+                        }
+                    }
+                    app->widget_state = 2;
+                }
+            }
+            if(app->widget_state == 3) {
+                app_render_edit_menu(app);
+                return true;
+            }
+            if(app->widget_state == 2) {
+                app_render_card_list(app);
+                return true;
+            }
+            return true;
+        }
+        if(app->widget_state == 2) {
+            if(event->key == InputKeyUp && app->card_count > 0) {
+                if(app->selected_card > 0) {
+                    app->selected_card--;
+                    if(app->selected_card < (size_t)app->card_list_scroll_offset) {
+                        app->card_list_scroll_offset = (uint8_t)app->selected_card;
+                    }
+                } else {
+                    app->selected_card = app->card_count - 1;
+                    if(app->card_count > CARD_LIST_VISIBLE_ITEMS) {
+                        app->card_list_scroll_offset = (uint8_t)(app->selected_card - (CARD_LIST_VISIBLE_ITEMS - 1));
+                    } else {
+                        app->card_list_scroll_offset = 0;
+                    }
+                }
+            } else if(event->key == InputKeyDown && app->card_count > 0) {
+                if(app->selected_card + 1 < app->card_count) {
+                    app->selected_card++;
+                    if(app->selected_card >= (size_t)(app->card_list_scroll_offset + CARD_LIST_VISIBLE_ITEMS)) {
+                        app->card_list_scroll_offset = (uint8_t)(app->selected_card - (CARD_LIST_VISIBLE_ITEMS - 1));
+                    }
+                } else {
+                    app->selected_card = 0;
+                    app->card_list_scroll_offset = 0;
+                }
+            } else if(event->key == InputKeyRight) {
+                furi_string_set(app->fb_output_path, "/ext/nfc");
+                file_browser_start(app->file_browser, app->fb_output_path);
+                app_switch_to_view(app, ViewFileBrowser);
+                return true;
+            } else if(event->key == InputKeyOk && app->card_count > 0) {
+                app->has_active_selection = true;
+                app->active_card_index = app->selected_card;
+                app_save_settings(app);
+                notification_message(app->notification, &sequence_success);
+            }
+            app_render_card_list(app);
+            return true;
+        }
+    } else if(event->type == InputTypeLong) {
+        if(app->widget_state == 2 && event->key == InputKeyOk && app->card_count > 0) {
+            app->edit_card_index = app->selected_card;
+            app->edit_menu_index = 0;
+            app->widget_state = 3;
+            app->just_entered_edit_mode = true;
+            widget_reset(app->widget);
+            widget_add_string_element(app->widget, 0, 0, AlignLeft, AlignTop, FontPrimary, "Edit Card");
+            const char* items[] = {"Name", "Password", "UID", "Delete"};
+            for(size_t i = 0; i < 4; i++) {
+                char line[32];
+                snprintf(line, sizeof(line), "%s %s", (i == app->edit_menu_index) ? ">" : " ", items[i]);
+                widget_add_string_element(app->widget, 0, 12 + i * 12, AlignLeft, AlignTop, FontSecondary, line);
+            }
+            return true;
+        }
+        if(app->widget_state == 3) {
+            bool was_just_entered = app->just_entered_edit_mode;
+            app->just_entered_edit_mode = false;
+            
+            if(event->key == InputKeyUp) {
+                if(app->edit_menu_index > 0) app->edit_menu_index--;
+            } else if(event->key == InputKeyDown) {
+                if(app->edit_menu_index < 3) app->edit_menu_index++;
+            } else if(event->key == InputKeyBack) {
+                app->widget_state = 2;
+            } else if(event->key == InputKeyOk && event->type == InputTypeShort) {
+                if(was_just_entered) {
+                    app_render_edit_menu(app);
+                    return true;
+                }
+                if(app->edit_menu_index == 0) {
+                    app->edit_state = EditStateName;
+                    text_input_reset(app->text_input);
+                    text_input_set_header_text(app->text_input, "Edit Name");
+                    text_input_set_result_callback(
+                        app->text_input,
+                        app_edit_text_result_callback,
+                        app,
+                        app->cards[app->edit_card_index].name,
+                        sizeof(app->cards[app->edit_card_index].name),
+                        false);
+                    app_switch_to_view(app, ViewTextInput);
+#ifdef HAS_MOMENTUM_SUPPORT
+                    text_input_show_illegal_symbols(app->text_input, true);
+#endif
+                    return true;
+                } else if(app->edit_menu_index == 1) {
+                    app->edit_state = EditStatePassword;
+                    text_input_reset(app->text_input);
+                    text_input_set_header_text(app->text_input, "Edit Password");
+                    text_input_set_result_callback(
+                        app->text_input,
+                        app_edit_text_result_callback,
+                        app,
+                        app->cards[app->edit_card_index].password,
+                        sizeof(app->cards[app->edit_card_index].password),
+                        false);
+#ifdef HAS_MOMENTUM_SUPPORT
+                    text_input_show_illegal_symbols(app->text_input, true);
+#endif
+                    app_switch_to_view(app, ViewTextInput);
+                    return true;
+                } else if(app->edit_menu_index == 2) {
+                    app->edit_state = EditStateUid;
+                    memset(app->edit_uid_bytes, 0, sizeof(app->edit_uid_bytes));
+                    // Use actual UID length, but allow up to MAX_UID_LEN for editing
+                    if(app->cards[app->edit_card_index].uid_len > 0 && 
+                       app->cards[app->edit_card_index].uid_len <= MAX_UID_LEN) {
+                        app->edit_uid_len = app->cards[app->edit_card_index].uid_len;
+                        memcpy(app->edit_uid_bytes, app->cards[app->edit_card_index].uid, 
+                               app->cards[app->edit_card_index].uid_len);
+                    } else {
+                        // New UID - start with 4 bytes (common NFC card size)
+                        app->edit_uid_len = 4;
+                    }
+                    byte_input_set_header_text(app->byte_input, "Edit UID (hex)");
+                    byte_input_set_result_callback(
+                        app->byte_input,
+                        app_edit_uid_byte_input_done,
+                        NULL,
+                        app,
+                        app->edit_uid_bytes,
+                        app->edit_uid_len);
+                    app_switch_to_view(app, ViewByteInput);
+                    return true;
+                } else if(app->edit_menu_index == 3) {
+                    if(app->edit_card_index < app->card_count) {
+                        for(size_t i = app->edit_card_index; i + 1 < app->card_count; i++) {
+                            app->cards[i] = app->cards[i + 1];
+                        }
+                        app->card_count--;
+                        if(app->has_active_selection) {
+                            if(app->active_card_index == app->edit_card_index) {
+                                app->has_active_selection = false;
+                            } else if(app->active_card_index > app->edit_card_index) {
+                                app->active_card_index--;
+                            }
+                        }
+                        if(app_save_cards(app)) {
+                            notification_message(app->notification, &sequence_success);
+                        } else {
+                            notification_message(app->notification, &sequence_error);
+                            FURI_LOG_E(TAG, "Failed to save after card deletion");
+                        }
+                    }
+                    app->widget_state = 2;
+                }
+            }
+            if(app->widget_state == 3) {
+                app_render_edit_menu(app);
+                return true;
+            }
+            if(app->widget_state == 2) {
+                app_render_card_list(app);
+                return true;
+            }
+            return true;
+        }
+    }
+    return false;
+}

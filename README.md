@@ -1,15 +1,19 @@
 # NFC PC Login
 
-A Flipper Zero application that uses NFC cards to automatically type passwords on your computer via BadUSB. Perfect for quick desktop logins using NFC cards, tags or implants.
+A Flipper Zero application that uses NFC cards to automatically type passwords on your computer via USB HID or BLE HID. Perfect for quick desktop logins using NFC cards, tags or implants!
 
 ## Special Thanks
 
-Special thanks to [**Equip**](https://github.com/equipter), [**tac0s**](https://github.com/dangerous-tac0s) and [**WillyJL**](https://github.com/willyjl/) for the help and suggestions while creating this app!
-
+Special thanks to [**Equip**](https://github.com/equipter), [**tac0s**](https://github.com/dangerous-tac0s) and [**WillyJL**](https://github.com/willyjl/) for the help and suggestions while creating this app! 
+And [**pr3**](https://github.com/the1anonlypr3/) for the app icon!!
 ## Features
 
 - **NFC Card Management**: Store multiple NFC cards with associated passwords
-- **Automatic Password Typing**: Scan an NFC card to automatically type its password via USB HID
+- **Automatic Password Typing**: Scan an NFC card to automatically type its password via USB HID or BLE HID
+- **Dual HID Support**: Switch between USB HID and BLE HID modes
+  - **USB HID**: Traditional USB keyboard mode (works on all devices)
+  - **BLE HID**: Bluetooth Low Energy keyboard mode (works on iOS, Android, and PC)
+  - BLE device appears as "Control <Flipper Name>" when enabled
 - **Secure Storage**: All card data is encrypted using the Flipper Zero's secure enclave (device unique key)
 - **Card Selection**: Choose a specific card to use, or auto-match on scan
 - **Persistent Selection**: Last selected card is remembered across app restarts
@@ -17,7 +21,7 @@ Special thanks to [**Equip**](https://github.com/equipter), [**tac0s**](https://
 - **Keyboard Layout Support**: Full BadUSB keyboard layout support for international keyboards and symbols
 - **Layout Selection**: Choose from available `.kl` layout files or cycle through them
 - **Import Support**: Import NFC cards from `.nfc` files
-- **Configurable Settings**: Adjust input delays, enter key behavior, and keyboard layout
+- **Configurable Settings**: Adjust input delays, enter key behavior, keyboard layout, and HID mode
 - **Momentum Firmware Support**: Illegal character highlighting for text inputs (when using Momentum firmware)
 
 ## Security
@@ -51,8 +55,10 @@ Special thanks to [**Equip**](https://github.com/equipter), [**tac0s**](https://
 
 1. Select **"Start Scan"** from the main menu
 2. Hold your NFC card/tag to the Flipper Zero
-3. The password will be automatically typed via USB HID
+3. The password will be automatically typed via USB HID or BLE HID (depending on your selected mode)
 4. Press Back to stop scanning
+
+**Note**: If using BLE mode, make sure to pair/connect your device to the Flipper Zero first. The device will appear as "Control <Flipper Name>" in your Bluetooth settings.
 
 ### Selecting a Specific Card
 
@@ -84,6 +90,11 @@ Special thanks to [**Equip**](https://github.com/equipter), [**tac0s**](https://
 
 ### Settings
 
+- **HID Mode**: Switch between USB and BLE HID modes
+  - **USB**: Traditional USB keyboard mode (default)
+  - **BLE**: Bluetooth Low Energy keyboard mode
+  - BLE advertising starts immediately when BLE mode is selected
+  - Device appears as "Control <Flipper Name>" in Bluetooth settings
 - **Append Enter**: Toggle whether to press Enter after typing the password
 - **Input Delay**: Adjust the delay between key presses (10ms, 50ms, 100ms, or 200ms)
 - **Keyboard Layout**: Select a BadUSB keyboard layout file (`.kl` format)
@@ -116,12 +127,14 @@ Home Key|1234567890|HomePassword
 
 Settings are stored in `/ext/apps_data/nfc_login/settings.txt` in plaintext:
 ```
+hid_mode=0
 append_enter=1
 input_delay=10
 keyboard_layout=en-US.kl
 active_card_index=2
 ```
 
+- `hid_mode`: 0 for USB HID, 1 for BLE HID (default: 0)
 - `append_enter`: 0 or 1 (whether to press Enter after password)
 - `input_delay`: 10, 50, 100, or 200 (delay between key presses in milliseconds)
 - `keyboard_layout`: Filename of the keyboard layout (e.g., "en-US.kl")
@@ -163,9 +176,11 @@ The layout system correctly handles:
 
 ### Requirements
 
-- Flipper Zero with USB HID support
+- Flipper Zero with USB HID and BLE support
 - NFC cards/tags (ISO14443-3A compatible)
-- Computer with USB HID keyboard support
+- Computer/device with USB HID or BLE HID keyboard support
+  - USB mode: Works with any device that supports USB keyboards
+  - BLE mode: Works with iOS, Android, and PC devices that support Bluetooth keyboards
 
 ### API Usage
 
