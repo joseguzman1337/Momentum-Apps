@@ -5,7 +5,6 @@
 #include <furi.h>
 #include <ctype.h>
 
-// Helper function to convert UID bytes to hex string
 static void uid_to_hex(const uint8_t* uid, size_t uid_len, char* hex_out) {
     for(size_t i = 0; i < uid_len; i++) {
         snprintf(hex_out + i * 2, 3, "%02X", uid[i]);
@@ -13,24 +12,20 @@ static void uid_to_hex(const uint8_t* uid, size_t uid_len, char* hex_out) {
     hex_out[uid_len * 2] = '\0';
 }
 
-// Helper function to parse a line and add card
 static bool parse_card_line(const char* line, NfcCard* card) {
     char line_copy[128];
     strncpy(line_copy, line, sizeof(line_copy) - 1);
     line_copy[sizeof(line_copy) - 1] = '\0';
     
-    // Parse: name|uid_hex|password
-    // Use exact field sizes to minimize stack usage
-    char name[32] = {0};  // matches NfcCard.name size
-    char uid_hex[32] = {0};  // MAX_UID_LEN * 2 = 20, 32 is safe
-    char password[64] = {0};  // matches MAX_PASSWORD_LEN
+    char name[32] = {0};
+    char uid_hex[32] = {0};
+    char password[64] = {0};
     
     uint8_t part = 0;
     size_t part_start = 0;
     
     for(size_t i = 0; line_copy[i] != '\0' && line_copy[i] != '\n' && line_copy[i] != '\r'; i++) {
         if(line_copy[i] == '|') {
-            // Copy current part
             size_t part_len = i - part_start;
             char* dest = NULL;
             size_t dest_size = 0;
@@ -50,14 +45,12 @@ static bool parse_card_line(const char* line, NfcCard* card) {
             
             part_start = i + 1;
             part++;
-            if(part >= 2) break; // Found uid_hex, next is password
+            if(part >= 2) break;
         }
     }
     
-    // Copy last part (password)
     if(part == 2) {
         size_t part_len = strlen(&line_copy[part_start]);
-        // Strip trailing newline
         while(part_len > 0 && (line_copy[part_start + part_len - 1] == '\r' || 
                                 line_copy[part_start + part_len - 1] == '\n')) {
             part_len--;
@@ -73,7 +66,6 @@ static bool parse_card_line(const char* line, NfcCard* card) {
         strncpy(card->name, name, sizeof(card->name) - 1);
         strncpy(card->password, password, sizeof(card->password) - 1);
         
-        // Parse hex UID
         size_t uid_hex_len = strlen(uid_hex);
         size_t uid_len = uid_hex_len / 2;
         if(uid_len > 0 && uid_len <= MAX_UID_LEN) {
@@ -94,10 +86,7 @@ void app_ensure_data_dir(Storage* storage) {
     storage_common_mkdir(storage, APP_DATA_DIR);
 }
 
-// Save cards - COMPLETE SEPARATION: crypto first, then file I/O
 bool app_save_cards(App* app) {
-    
-    // PHASE 1: Build plaintext data (no storage, no crypto)
     size_t estimated_size = app->card_count * 256;
     if(estimated_size < 512) estimated_size = 512;
     if(estimated_size > MAX_ENCRYPTED_SIZE) estimated_size = MAX_ENCRYPTED_SIZE;
@@ -123,7 +112,6 @@ bool app_save_cards(App* app) {
         }
     }
     
-    // PHASE 2: Encrypt data (PURE CRYPTO, NO STORAGE)
     uint8_t* encrypted = NULL;
     size_t encrypted_len = 0;
     bool encryption_success = false;
@@ -137,7 +125,6 @@ bool app_save_cards(App* app) {
             return false;
         }
         
-        // Use passcode-based encryption if passcode exists, otherwise use hardware encryption
         if(has_passcode()) {
             char passcode_sequence[MAX_PASSCODE_SEQUENCE_LEN];
             if(get_passcode_sequence(passcode_sequence, sizeof(passcode_sequence))) {
@@ -163,21 +150,17 @@ bool app_save_cards(App* app) {
             return false;
         }
         
-        // Cleanup plaintext immediately after encryption
         memset(plaintext, 0, estimated_size);
         free(plaintext);
         plaintext = NULL;
         
-        // Wait for crypto subsystem to settle
         furi_delay_ms(CRYPTO_SETTLE_DELAY_MS);
     } else if(app->card_count == 0) {
-        // Empty file case - no encryption needed
         memset(plaintext, 0, estimated_size);
         free(plaintext);
         plaintext = NULL;
     }
     
-    // PHASE 3: File I/O (FRESH STORAGE HANDLE, NO CRYPTO)
     bool success = false;
     
     Storage* storage = furi_record_open(RECORD_STORAGE);
@@ -190,7 +173,6 @@ bool app_save_cards(App* app) {
         return false;
     }
     
-    // Check SD status
     FS_Error sd_status = storage_sd_status(storage);
     if(sd_status != FSE_OK) {
         FURI_LOG_E(TAG, "app_save_cards: SD not ready (status=%d)", sd_status);
@@ -202,19 +184,16 @@ bool app_save_cards(App* app) {
         return false;
     }
     
-    // Ensure directory exists
     app_ensure_data_dir(storage);
     
-    // Read existing passcode header before opening for write (read entire file to be safe)
     uint8_t* passcode_header = NULL;
     size_t passcode_header_len = 0;
     
     File* read_file = storage_file_alloc(storage);
-    if(storage_file_open(read_file, NFC_CARDS_FILE_ENC, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        if(storage_file_open(read_file, NFC_CARDS_FILE_ENC, FSAM_READ, FSOM_OPEN_EXISTING)) {
         size_t file_size = storage_file_size(read_file);
         
         if(file_size >= PASSCODE_HEADER_SIZE) {
-            // Read entire file into memory
             uint8_t* file_data = malloc(file_size);
             if(file_data) {
                 size_t bytes_read = storage_file_read(read_file, file_data, file_size);
@@ -228,7 +207,6 @@ bool app_save_cards(App* app) {
                             passcode_header_len = PASSCODE_HEADER_SIZE + passcode_len;
                         }
                     } else {
-                        // No passcode, just write header with 0 length
                         passcode_header = malloc(PASSCODE_HEADER_SIZE);
                         if(passcode_header) {
                             passcode_header[0] = 0;
@@ -240,7 +218,6 @@ bool app_save_cards(App* app) {
                 free(file_data);
             }
         } else {
-            // New file, write header with 0 length
             passcode_header = malloc(PASSCODE_HEADER_SIZE);
             if(passcode_header) {
                 passcode_header[0] = 0;
@@ -250,7 +227,6 @@ bool app_save_cards(App* app) {
         }
         storage_file_close(read_file);
     } else {
-        // New file, write header with 0 length
         passcode_header = malloc(PASSCODE_HEADER_SIZE);
         if(passcode_header) {
             passcode_header[0] = 0;
@@ -260,7 +236,6 @@ bool app_save_cards(App* app) {
     }
     storage_file_free(read_file);
     
-    // Allocate file object
     File* file = storage_file_alloc(storage);
     if(!file) {
         FURI_LOG_E(TAG, "app_save_cards: Failed to allocate file object");
@@ -275,7 +250,6 @@ bool app_save_cards(App* app) {
         return false;
     }
     
-    // Open file
     bool file_opened = storage_file_open(file, NFC_CARDS_FILE_ENC, FSAM_WRITE, FSOM_CREATE_ALWAYS);
     if(!file_opened) {
         FURI_LOG_E(TAG, "app_save_cards: Failed to open file for writing");
@@ -291,14 +265,11 @@ bool app_save_cards(App* app) {
         return false;
     }
     
-    // Write data (preserving passcode header)
     if(encryption_success && encrypted_len > 0) {
-        // Write passcode header (or 0-length header if no passcode)
         if(passcode_header) {
             storage_file_write(file, passcode_header, passcode_header_len);
         }
         
-        // Write encrypted card data
         size_t written = storage_file_write(file, encrypted, encrypted_len);
         if(written == encrypted_len) {
             success = true;
@@ -306,7 +277,6 @@ bool app_save_cards(App* app) {
             FURI_LOG_E(TAG, "app_save_cards: Write failed: %zu/%zu bytes", written, encrypted_len);
         }
     } else if(app->card_count == 0) {
-        // Empty file - write passcode header with 0 length
         if(passcode_header) {
             storage_file_write(file, passcode_header, passcode_header_len);
         } else {
@@ -320,12 +290,10 @@ bool app_save_cards(App* app) {
         free(passcode_header);
     }
     
-    // Close file and storage
     storage_file_close(file);
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
     
-    // Cleanup encrypted data
     if(encrypted) {
         memset(encrypted, 0, encrypted_len);
         free(encrypted);
@@ -334,11 +302,9 @@ bool app_save_cards(App* app) {
     return success;
 }
 
-// Load cards - COMPLETE SEPARATION: file I/O first, then crypto
 void app_load_cards(App* app) {
     app->card_count = 0;
     
-    // PHASE 1: File I/O - Read encrypted data (NO CRYPTO YET)
     Storage* storage = furi_record_open(RECORD_STORAGE);
     if(!storage) {
         FURI_LOG_E(TAG, "app_load_cards: Failed to open storage record");
@@ -356,7 +322,6 @@ void app_load_cards(App* app) {
     size_t encrypted_len = 0;
     bool file_read_success = false;
     
-    // Try encrypted file first
     if(storage_file_open(file, NFC_CARDS_FILE_ENC, FSAM_READ, FSOM_OPEN_EXISTING)) {
         size_t file_size = storage_file_size(file);
         
@@ -368,7 +333,6 @@ void app_load_cards(App* app) {
             return;
         }
         
-        // Read passcode header
         uint8_t length_bytes[2];
         size_t bytes_read = storage_file_read(file, length_bytes, 2);
         if(bytes_read != 2) {
@@ -381,7 +345,6 @@ void app_load_cards(App* app) {
         
         uint16_t passcode_len = (uint16_t)(length_bytes[0] | (length_bytes[1] << 8));
         
-        // Read entire file into memory to avoid seek issues
         uint8_t* file_data = malloc(file_size);
         if(!file_data) {
             FURI_LOG_E(TAG, "app_load_cards: Failed to allocate file buffer");
@@ -391,7 +354,6 @@ void app_load_cards(App* app) {
             return;
         }
         
-        // Reset file position and read entire file
         storage_file_close(file);
         storage_file_open(file, NFC_CARDS_FILE_ENC, FSAM_READ, FSOM_OPEN_EXISTING);
         size_t total_read = storage_file_read(file, file_data, file_size);
@@ -405,11 +367,9 @@ void app_load_cards(App* app) {
             return;
         }
         
-        // Calculate card data size and extract it
         size_t cards_data_size = file_size - PASSCODE_HEADER_SIZE - passcode_len;
         
         if(cards_data_size == 0) {
-            // No card data
             storage_file_close(file);
             storage_file_free(file);
             furi_record_close(RECORD_STORAGE);
@@ -443,7 +403,6 @@ void app_load_cards(App* app) {
             return;
         }
         
-        // Extract card data (skip passcode header and passcode)
         size_t card_data_offset = PASSCODE_HEADER_SIZE + passcode_len;
         memcpy(encrypted, file_data + card_data_offset, cards_data_size);
         
@@ -455,7 +414,6 @@ void app_load_cards(App* app) {
         encrypted_len = cards_data_size;
         file_read_success = true;
     } else {
-        // No encrypted file yet: treat as empty (allow first save to create it)
         storage_file_close(file);
         storage_file_free(file);
         furi_record_close(RECORD_STORAGE);
@@ -463,7 +421,6 @@ void app_load_cards(App* app) {
         return;
     }
     
-    // PHASE 2: Decrypt data (PURE CRYPTO, NO STORAGE)
     if(file_read_success && encrypted_len > 0) {
         char* plaintext = malloc(MAX_ENCRYPTED_SIZE);
         if(!plaintext) {
@@ -476,7 +433,6 @@ void app_load_cards(App* app) {
         size_t plaintext_len = 0;
         bool decrypt_success = false;
         
-        // Try passcode-based decryption first if passcode exists
         if(has_passcode()) {
             char passcode_sequence[MAX_PASSCODE_SEQUENCE_LEN];
             if(get_passcode_sequence(passcode_sequence, sizeof(passcode_sequence))) {
@@ -515,12 +471,11 @@ void app_load_cards(App* app) {
         if(!decrypt_success) {
             FURI_LOG_E(TAG, "app_load_cards: Decryption failed");
             memset(plaintext, 0, MAX_ENCRYPTED_SIZE);
-            free(plaintext);
-            return;
+        free(plaintext);
+        return;
         }
         furi_delay_ms(STORAGE_READ_DELAY_MS);
         
-        // PHASE 3: Parse plaintext (NO CRYPTO, NO STORAGE)
         char* line_start = plaintext;
         while(app->card_count < MAX_CARDS && line_start < plaintext + plaintext_len) {
             char* line_end = strchr(line_start, '\n');
@@ -529,7 +484,6 @@ void app_load_cards(App* app) {
             }
             
             size_t line_len = line_end - line_start;
-            // Use same buffer size as parse_card_line (128 bytes) to minimize stack usage
             if(line_len > 0 && line_len < 128) {
                 char line[128];
                 memcpy(line, line_start, line_len);
@@ -555,12 +509,10 @@ void app_load_cards(App* app) {
         
     }
     
-    // Validate and restore last selected card if it was saved
     if(app->active_card_index < app->card_count && app->card_count > 0) {
         app->has_active_selection = true;
         app->selected_card = app->active_card_index;
     } else if(app->active_card_index > 0) {
-        // Index was saved but card no longer exists - clear selection
         app->has_active_selection = false;
         app->active_card_index = 0;
         FURI_LOG_W(TAG, "app_load_cards: Saved card index no longer exists (card_count=%zu), clearing selection", app->card_count);

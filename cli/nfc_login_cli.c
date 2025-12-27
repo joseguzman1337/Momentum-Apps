@@ -11,7 +11,6 @@
 #endif
 #include "nfc_login_cli.h"
 
-// Include app header after CLI to avoid TAG conflict  
 #include "../nfc_login_app.h"
 #include "../crypto/nfc_login_crypto.h"
 #include "../crypto/nfc_login_passcode.h"
@@ -19,29 +18,22 @@
 #include "../storage/nfc_login_card_storage.h"
 #include "../hid/nfc_login_hid.h"
 
-// Import HAS_BLE_HID_API
 #ifndef HAS_BLE_HID_API
     #define HAS_BLE_HID_API 0
 #endif
 
-// Undefine TAG from nfc_login_app.h and use our own
 #undef TAG
 #define TAG "nfc_login_cli"
 
-// Global pointer to running app instance (set by main.c when app is running)
 static App* g_running_app = NULL;
 
-// Set the running app instance (called from main.c)
 void nfc_login_cli_set_app_instance(App* app) {
     g_running_app = app;
 }
 
-// Clear the running app instance (called from main.c when app closes)
 void nfc_login_cli_clear_app_instance(void) {
     g_running_app = NULL;
 }
-
-// Helper function to convert hex string to bytes
 static bool hex_to_bytes(const char* hex_str, uint8_t* bytes, size_t max_len, size_t* out_len) {
     size_t hex_len = strlen(hex_str);
     if(hex_len == 0 || hex_len % 2 != 0 || hex_len / 2 > max_len) {
@@ -60,7 +52,6 @@ static bool hex_to_bytes(const char* hex_str, uint8_t* bytes, size_t max_len, si
     return true;
 }
 
-// Helper function to convert bytes to hex string
 static void bytes_to_hex(const uint8_t* bytes, size_t len, char* hex_out, size_t hex_out_size) {
     if(hex_out_size < len * 2 + 1) return;
     
@@ -70,24 +61,17 @@ static void bytes_to_hex(const uint8_t* bytes, size_t len, char* hex_out, size_t
     hex_out[len * 2] = '\0';
 }
 
-// Get app instance - use running app if available, otherwise create minimal CLI-only instance
 static App* cli_get_app(void) {
-    // If app is running, use it
     if(g_running_app) {
         return g_running_app;
     }
-    
-    // Otherwise create a minimal CLI-only app instance
     App* app = malloc(sizeof(App));
     if(!app) {
         FURI_LOG_E(TAG, "Failed to allocate App structure");
         return NULL;
     }
     
-    // Zero-initialize the entire structure
     memset(app, 0, sizeof(App));
-    
-    // Initialize critical fields to safe defaults BEFORE any function calls
     app->card_count = 0;
     app->selected_card = 0;
     app->has_active_selection = false;
@@ -99,12 +83,8 @@ static App* cli_get_app(void) {
     app->passcode_disabled = false;
     app->hid_mode = HidModeUsb;
     
-    // Set default keyboard layout
     strncpy(app->keyboard_layout, "en-US.kl", sizeof(app->keyboard_layout) - 1);
     app->keyboard_layout[sizeof(app->keyboard_layout) - 1] = '\0';
-    
-    // Try to load settings - but don't crash if it fails
-    // app_load_settings may access GUI resources, so we'll do a minimal version
     Storage* storage = furi_record_open(RECORD_STORAGE);
     if(storage) {
         File* file = storage_file_alloc(storage);
@@ -153,32 +133,20 @@ static App* cli_get_app(void) {
         furi_record_close(RECORD_STORAGE);
     }
     
-    // Only try to load cards if we can ensure crypto key
-    // If crypto isn't available, we can't decrypt cards anyway
     if(ensure_crypto_key()) {
-        // Load cards (opens/closes storage internally)
-        // This may fail if file doesn't exist - that's okay
         app_load_cards(app);
-        
     }
     
     return app;
 }
 
-// Cleanup app structure (only free if it's not the running app)
 static void cli_free_app(App* app) {
     if(!app) return;
-    
-    // Don't free if it's the running app instance
     if(app == g_running_app) {
         return;
     }
-    
-    // Free CLI-only allocated app instance
     free(app);
 }
-
-// Command: nfc_login list
 static void nfc_login_cli_list(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(args);
@@ -195,7 +163,6 @@ static void nfc_login_cli_list(PipeSide* pipe, FuriString* args, void* context) 
     } else {
         printf("Stored cards:\r\n");
         for(size_t i = 0; i < app->card_count && i < MAX_CARDS; i++) {
-            // Safety check for uid_len
             size_t uid_len = app->cards[i].uid_len;
             if(uid_len > MAX_UID_LEN) uid_len = MAX_UID_LEN;
             
@@ -212,7 +179,6 @@ static void nfc_login_cli_list(PipeSide* pipe, FuriString* args, void* context) 
     cli_free_app(app);
 }
 
-// Command: nfc_login add <name> <uid_hex> <password>
 static void nfc_login_cli_add(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(context);
@@ -230,12 +196,10 @@ static void nfc_login_cli_add(PipeSide* pipe, FuriString* args, void* context) {
         return;
     }
     
-    // Parse arguments: name uid_hex password
     FuriString* name_str = furi_string_alloc();
     FuriString* uid_str = furi_string_alloc();
     FuriString* password_str = furi_string_alloc();
     
-    // Parse name (may contain spaces, so read until next quote or space)
     const char* args_cstr = furi_string_get_cstr(args);
     size_t args_len = furi_string_size(args);
     
@@ -248,9 +212,6 @@ static void nfc_login_cli_add(PipeSide* pipe, FuriString* args, void* context) {
         cli_free_app(app);
         return;
     }
-    
-    // Simple parsing: split by spaces (name can't have spaces in this simple version)
-    // For better parsing, we'd need to handle quoted strings
     int arg_count = 0;
     const char* start = args_cstr;
     const char* end = args_cstr;
@@ -288,7 +249,6 @@ static void nfc_login_cli_add(PipeSide* pipe, FuriString* args, void* context) {
     const char* uid_hex = furi_string_get_cstr(uid_str);
     const char* password = furi_string_get_cstr(password_str);
     
-    // Validate name
     if(strlen(name) == 0 || strlen(name) >= sizeof(app->cards[0].name)) {
         printf( "Error: Invalid name (max %zu chars).\r\n", sizeof(app->cards[0].name) - 1);
         furi_string_free(name_str);
@@ -298,7 +258,6 @@ static void nfc_login_cli_add(PipeSide* pipe, FuriString* args, void* context) {
         return;
     }
     
-    // Validate and parse UID
     NfcCard* new_card = &app->cards[app->card_count];
     if(!hex_to_bytes(uid_hex, new_card->uid, MAX_UID_LEN, &new_card->uid_len)) {
         printf( "Error: Invalid UID format (must be hex, even number of chars).\r\n");
@@ -309,7 +268,6 @@ static void nfc_login_cli_add(PipeSide* pipe, FuriString* args, void* context) {
         return;
     }
     
-    // Validate password
     if(strlen(password) == 0 || strlen(password) >= MAX_PASSWORD_LEN) {
         printf( "Error: Invalid password (max %d chars).\r\n", MAX_PASSWORD_LEN - 1);
         furi_string_free(name_str);
@@ -319,7 +277,6 @@ static void nfc_login_cli_add(PipeSide* pipe, FuriString* args, void* context) {
         return;
     }
     
-    // Add card
     strncpy(new_card->name, name, sizeof(new_card->name) - 1);
     new_card->name[sizeof(new_card->name) - 1] = '\0';
     strncpy(new_card->password, password, sizeof(new_card->password) - 1);
@@ -327,7 +284,6 @@ static void nfc_login_cli_add(PipeSide* pipe, FuriString* args, void* context) {
     
     app->card_count++;
     
-    // Save cards
     if(app_save_cards(app)) {
         printf( "Card added successfully: %s\r\n", name);
     } else {
@@ -341,7 +297,6 @@ static void nfc_login_cli_add(PipeSide* pipe, FuriString* args, void* context) {
     cli_free_app(app);
 }
 
-// Command: nfc_login delete <index>
 static void nfc_login_cli_delete(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(context);
@@ -367,38 +322,32 @@ static void nfc_login_cli_delete(PipeSide* pipe, FuriString* args, void* context
         return;
     }
     
-    // Remove card by shifting array
     for(size_t i = index; i < app->card_count - 1; i++) {
         app->cards[i] = app->cards[i + 1];
     }
     app->card_count--;
     
-    // Update active selection if needed
     if(app->has_active_selection) {
         if(app->selected_card == index) {
             // Deleted the active card
             app->has_active_selection = false;
             app->active_card_index = 0;
         } else if(app->selected_card > index) {
-            // Active card index shifted
             app->selected_card--;
             app->active_card_index = app->selected_card;
         }
     }
     
-    // Save cards
     if(app_save_cards(app)) {
         printf( "Card deleted successfully.\r\n");
-        app_save_settings(app); // Save updated active_card_index
+        app_save_settings(app);
     } else {
         printf( "Error: Failed to save changes.\r\n");
-        // Rollback would be complex, so we just report error
     }
     
     cli_free_app(app);
 }
 
-// Command: nfc_login select <index>
 static void nfc_login_cli_select(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(context);
@@ -434,7 +383,6 @@ static void nfc_login_cli_select(PipeSide* pipe, FuriString* args, void* context
     cli_free_app(app);
 }
 
-// Command: nfc_login settings
 static void nfc_login_cli_settings(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(args);
@@ -462,7 +410,6 @@ static void nfc_login_cli_settings(PipeSide* pipe, FuriString* args, void* conte
     cli_free_app(app);
 }
 
-// Command: nfc_login set <setting> <value>
 static void nfc_login_cli_set(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(context);
@@ -482,7 +429,6 @@ static void nfc_login_cli_set(PipeSide* pipe, FuriString* args, void* context) {
         return;
     }
     
-    // Parse setting name
     const char* setting_start = args_cstr;
     while(*setting_start == ' ' || *setting_start == '\t') setting_start++;
     
@@ -498,7 +444,6 @@ static void nfc_login_cli_set(PipeSide* pipe, FuriString* args, void* context) {
         setting[setting_len] = '\0';
     }
     
-    // Parse value
     const char* value_start = setting_end;
     while(*value_start == ' ' || *value_start == '\t') value_start++;
     
@@ -583,7 +528,6 @@ static void nfc_login_cli_set(PipeSide* pipe, FuriString* args, void* context) {
     cli_free_app(app);
 }
 
-// Command: nfc_login help
 static void nfc_login_cli_help(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(args);
@@ -615,45 +559,35 @@ static void nfc_login_cli_help(PipeSide* pipe, FuriString* args, void* context) 
     printf("  login set append_enter 1\r\n");
 }
 
-// Main command handler that routes to subcommands
 static void nfc_login_cli_command(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
-    UNUSED(context); // Subcommands use cli_get_app() which handles both cases
+    UNUSED(context);
     
     FuriString* remaining_args = NULL;
     
-    // Handle NULL args - show help immediately
     if(!args) {
         nfc_login_cli_help(pipe, NULL, NULL);
         return;
     }
     
-    // Get args string safely
-    const char* args_cstr = NULL;
-    size_t args_len = 0;
-    
-    // Try to get args string, but handle errors gracefully
-    args_cstr = furi_string_get_cstr(args);
+    const char* args_cstr = furi_string_get_cstr(args);
     if(!args_cstr) {
         nfc_login_cli_help(pipe, NULL, NULL);
         return;
     }
     
-    args_len = furi_string_size(args);
+    size_t args_len = furi_string_size(args);
     
-    // Skip leading whitespace
     while(args_len > 0 && (*args_cstr == ' ' || *args_cstr == '\t')) {
         args_cstr++;
         args_len--;
     }
     
     if(args_len == 0) {
-        // No subcommand, show help
         nfc_login_cli_help(pipe, NULL, NULL);
         return;
     }
     
-    // Extract subcommand
     const char* cmd_end = args_cstr;
     while(*cmd_end != '\0' && *cmd_end != ' ' && *cmd_end != '\t') {
         cmd_end++;
@@ -666,7 +600,6 @@ static void nfc_login_cli_command(PipeSide* pipe, FuriString* args, void* contex
         cmd[cmd_len] = '\0';
     }
     
-    // Get remaining arguments (skip command and whitespace)
     remaining_args = furi_string_alloc();
     if(!remaining_args) {
         FURI_LOG_E(TAG, "Failed to allocate remaining_args");
@@ -678,8 +611,6 @@ static void nfc_login_cli_command(PipeSide* pipe, FuriString* args, void* contex
     if(*cmd_end != '\0') {
         furi_string_set_str(remaining_args, cmd_end);
     }
-    
-    // Route to appropriate handler
     if(strcmp(cmd, "list") == 0) {
         nfc_login_cli_list(pipe, remaining_args, NULL);
     } else if(strcmp(cmd, "add") == 0) {
@@ -704,9 +635,8 @@ static void nfc_login_cli_command(PipeSide* pipe, FuriString* args, void* contex
     }
 }
 
-// Register CLI command - called from main() after app initialization
 void nfc_login_cli_register_commands(App* app) {
-    UNUSED(app); // App is accessed via g_running_app in subcommands
+    UNUSED(app);
     
     CliRegistry* cli = furi_record_open(RECORD_CLI);
     if(!cli) {
@@ -714,13 +644,11 @@ void nfc_login_cli_register_commands(App* app) {
         return;
     }
     
-    // Use CliCommandFlagParallelSafe like TOTP - allows running when app is open
     cli_registry_add_command(cli, "login", CliCommandFlagParallelSafe, nfc_login_cli_command, NULL);
     
     furi_record_close(RECORD_CLI);
 }
 
-// Unregister CLI command - called from main() before cleanup
 void nfc_login_cli_unregister_commands(void) {
     CliRegistry* cli = furi_record_open(RECORD_CLI);
     if(!cli) {

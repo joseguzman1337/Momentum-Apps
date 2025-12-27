@@ -11,41 +11,30 @@
 #include "scenes/settings/passcode_canvas.h"
 #include "cli/nfc_login_cli.h"
 
-// Main app
 int32_t nfc_login(void* p) {
     UNUSED(p);
     
     App* app = malloc(sizeof(App));
     memset(app, 0, sizeof(App));
     
-    // Initialize GUI
     app->gui = furi_record_open(RECORD_GUI);
     app->notification = furi_record_open(RECORD_NOTIFICATION);
     
-    // Views / dispatcher
     scene_manager_init(app);
-    
-    // Initialize layout settings
-    // Load settings (includes keyboard layout)
     app_load_settings(app);
     
-    // Start BLE advertising if BLE mode is selected
     if(app->hid_mode == HidModeBle) {
         app_start_ble_advertising();
     }
     
-    // Ensure crypto key exists early (will generate if needed)
-    // This prevents blocking during save operations
     ensure_crypto_key();
     
-    // Initialize passcode prompt state
     app->passcode_prompt_active = false;
     app->passcode_sequence_len = 0;
     app->passcode_needed = false;
     app->passcode_failed_attempts = 0;
     memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
     
-    // Check if passcode is disabled for NFC Login app
     if(app->passcode_disabled) {
         app_load_cards(app);
         app_switch_to_view(app, ViewSubmenu);
@@ -55,29 +44,24 @@ int32_t nfc_login(void* p) {
             app->passcode_prompt_active = true;
             app->passcode_sequence_len = 0;
             memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
-            app->widget_state = 7; // Lockscreen state
+            app->widget_state = 7;
             app_switch_to_view(app, ViewPasscodeCanvas);
         } else {
             app->passcode_prompt_active = true;
             app->passcode_sequence_len = 0;
             memset(app->passcode_sequence, 0, sizeof(app->passcode_sequence));
-            app->widget_state = 6; // Passcode setup state
+            app->widget_state = 6;
             app_switch_to_view(app, ViewPasscodeCanvas);
         }
     }
     
-    // Register CLI commands (like TOTP does - after app initialization)
     nfc_login_cli_register_commands(app);
     nfc_login_cli_set_app_instance(app);
     
-    // Run dispatcher
     view_dispatcher_run(app->view_dispatcher);
     
-    // Unregister CLI commands before cleanup (like TOTP does)
     nfc_login_cli_unregister_commands();
     nfc_login_cli_clear_app_instance();
-    
-    // Cleanup
     if(app->scanning) {
         app->scanning = false;
         if(app->scan_thread) {

@@ -56,7 +56,7 @@ void app_render_credits(App* app) {
         widget_add_string_element(app->widget, 0, 42, AlignLeft, AlignTop, FontSecondary, "github.com/Play2BReal");
     } else if(app->credits_page == 1) {
         widget_add_string_element(app->widget, 0, 12, AlignLeft, AlignTop, FontSecondary, "Special Thanks To:");
-        widget_add_string_element(app->widget, 0, 22, AlignLeft, AlignTop, FontSecondary, "Equip, Tac0s, WillyJL");
+        widget_add_string_element(app->widget, 0, 22, AlignLeft, AlignTop, FontSecondary, "Equip, Tac0s, WillyJL, pr3");
         widget_add_string_element(app->widget, 0, 32, AlignLeft, AlignTop, FontSecondary, "& The Biohacking Community!");
         widget_add_string_element(app->widget, 0, 42, AlignLeft, AlignTop, FontSecondary, "");
     }
