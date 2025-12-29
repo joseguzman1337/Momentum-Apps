@@ -32,6 +32,9 @@ void wifi_marauder_scene_script_select_on_enter(void* context) {
     WifiMarauderApp* app = context;
     Submenu* submenu = app->submenu;
 
+    app->script_list = NULL;
+    app->script_list_count = 0;
+
     File* dir_scripts = storage_file_alloc(app->storage);
     if(storage_dir_open(dir_scripts, MARAUDER_APP_FOLDER_SCRIPTS)) {
         FileInfo file_info;
@@ -83,8 +86,12 @@ void wifi_marauder_scene_script_select_on_exit(void* context) {
     WifiMarauderApp* app = context;
     submenu_reset(app->submenu);
 
-    for(int i = 0; i < app->script_list_count; i++) {
-        furi_string_free(app->script_list[i]);
+    if(app->script_list) {
+        for(int i = 0; i < app->script_list_count; i++) {
+            furi_string_free(app->script_list[i]);
+        }
+        free(app->script_list);
+        app->script_list = NULL;
     }
-    free(app->script_list);
+    app->script_list_count = 0;
 }

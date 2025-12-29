@@ -135,7 +135,7 @@ static bool radio_scanner_init_subghz(RadioScannerApp* app) {
 #endif
     if(furi_hal_speaker_acquire(30)) {
         app->speaker_acquired = true;
-        subghz_devices_set_async_mirror_pin(device, &gpio_speaker);
+        subghz_devices_set_async_mirror_pin(device, furi_hal_speaker_get_pin());
 #ifdef FURI_DEBUG
         FURI_LOG_D(TAG, "Speaker acquired and async mirror pin set");
 #endif
