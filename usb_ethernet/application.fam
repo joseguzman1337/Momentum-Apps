@@ -1,0 +1,13 @@
+App(
+    appid="usb_ethernet",
+    name="USB Ethernet",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="usb_ethernet_app",
+    stack_size=1 * 1024,
+    fap_icon="icon.png",
+    fap_category="GPIO",
+    fap_author="Antigravity",
+    fap_version="1.0",
+    fap_description="Enables USB CDC-ECM Ethernet",
+    fap_libs=["lwip"],
+)

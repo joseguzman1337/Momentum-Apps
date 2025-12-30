@@ -1,0 +1,14 @@
+App(
+    appid="virtual_lora",
+    name="Virtual LoRa",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="virtual_lora_app",
+    stack_size=2 * 1024,
+    fap_category="Sub-GHz",
+    fap_icon="icon.png",
+    fap_description="AI-driven LoRa virtualization via ESP32",
+    fap_author="AI Research",
+    fap_version="1.0",
+    fap_icon_assets="icons",
+    requires=["gui", "dialogs"],
+)

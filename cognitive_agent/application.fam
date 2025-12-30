@@ -1,0 +1,12 @@
+App(
+    appid="cognitive_agent",
+    name="Cognitive Agent",
+    fap_version=(0, 1),
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="cognitive_agent_app",
+    requires=["gui", "storage"],
+    stack_size=2 * 1024,
+    order=100,
+    fap_icon="cognitive_10px.png",
+    fap_category="GPIO/ESP",
+)
