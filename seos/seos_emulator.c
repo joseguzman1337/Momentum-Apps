@@ -580,6 +580,7 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
         Iso14443_4aError error = iso14443_4a_listener_send_block(iso14443_4a_listener, tx_buffer);
         if(error != Iso14443_4aErrorNone) {
 #else
+        UNUSED(iso14443_4a_listener);
         NfcError error = nfc_listener_tx(seos->nfc, tx_buffer);
         if(error != NfcErrorNone) {
 #endif
