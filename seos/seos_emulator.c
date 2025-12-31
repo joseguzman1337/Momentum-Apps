@@ -565,41 +565,26 @@ NfcCommand seos_worker_listener_callback(NfcGenericEvent event, void* context) {
                    sizeof(FILE_NOT_FOUND)) != 0) {
                 bit_buffer_append_bytes(tx_buffer, success, sizeof(success));
             }
+        }
 
 #if __has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
-            // With PR #4242 ISO14443-4A response CRC is handled by firmware and not necessary in tx buffer
+        // With PR #4242 ISO14443-4A response CRC is handled by firmware and not necessary in tx buffer
 #else
-            iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
+        iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
 #endif
 
-            seos_log_bitbuffer(TAG, "NFC transmit", seos_emulator->tx_buffer);
+        seos_log_bitbuffer(TAG, "NFC transmit", seos_emulator->tx_buffer);
 
 #if __has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
-            // With PR #4242 ISO14443-4A use the public API that handles response PCB and CRC
-            Iso14443_4aError error =
-                iso14443_4a_listener_send_block(iso14443_4a_listener, tx_buffer);
-            if(error != Iso14443_4aErrorNone) {
+        // With PR #4242 ISO14443-4A use the public API that handles response PCB and CRC
+        Iso14443_4aError error = iso14443_4a_listener_send_block(iso14443_4a_listener, tx_buffer);
+        if(error != Iso14443_4aErrorNone) {
 #else
-            NfcError error = nfc_listener_tx(seos->nfc, tx_buffer);
-            if(error != NfcErrorNone) {
+        NfcError error = nfc_listener_tx(seos->nfc, tx_buffer);
+        if(error != NfcErrorNone) {
 #endif
-                FURI_LOG_W(TAG, "Tx error: %d", error);
-                break;
-            }
-        } else {
-#if __has_include(<lib/nfc/protocols/type_4_tag/type_4_tag.h>)
-            // With PR #4242 ISO14443-4A these polyfills are handled in firmware level
-            furi_crash("Unreachable");
-#endif
-            iso14443_crc_append(Iso14443CrcTypeA, tx_buffer);
-
-            seos_log_bitbuffer(TAG, "NFC transmit", seos_emulator->tx_buffer);
-
-            NfcError error = nfc_listener_tx(seos->nfc, tx_buffer);
-            if(error != NfcErrorNone) {
-                FURI_LOG_W(TAG, "Tx error: %d", error);
-                break;
-            }
+            FURI_LOG_W(TAG, "Tx error: %d", error);
+            break;
         }
         break;
     case Iso14443_4aListenerEventTypeHalted:
