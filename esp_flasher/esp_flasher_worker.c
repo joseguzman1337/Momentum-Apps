@@ -1,4 +1,7 @@
 #include "esp_flasher_worker.h"
+#include <furi/core/log.h>
+
+#define TAG "EspFlasher"
 
 FuriStreamBuffer* flash_rx_stream; // TODO make safe
 EspFlasherApp* global_app; // TODO make safe
@@ -20,6 +23,8 @@ static esp_loader_error_t _flash_file(EspFlasherApp* app, char* filepath, uint32
 
     char user_msg[256];
 
+    FURI_LOG_I(TAG, "flash_file path='%s' addr=0x%08lx", filepath, addr);
+
     // open file
     if(!storage_file_open(bin_file, filepath, FSAM_READ, FSOM_OPEN_EXISTING)) {
         storage_file_close(bin_file);
@@ -30,6 +35,7 @@ static esp_loader_error_t _flash_file(EspFlasherApp* app, char* filepath, uint32
 
     uint64_t size = storage_file_size(bin_file);
 
+    FURI_LOG_I(TAG, "Erasing flash region addr=0x%08lx size=%llu", addr, size);
     loader_port_debug_print("Erasing flash...this may take a while\n");
     err = esp_loader_flash_start(addr, size, sizeof(payload));
     if(err != ESP_LOADER_SUCCESS) {
@@ -37,6 +43,7 @@ static esp_loader_error_t _flash_file(EspFlasherApp* app, char* filepath, uint32
         storage_file_free(bin_file);
         snprintf(user_msg, sizeof(user_msg), "Erasing flash failed with error %d\n", err);
         loader_port_debug_print(user_msg);
+        FURI_LOG_E(TAG, "esp_loader_flash_start failed err=%d addr=0x%08lx", err, addr);
         return err;
     }
 
@@ -164,6 +171,8 @@ static void _flash_all_files(EspFlasherApp* app) {
     esp_loader_error_t err;
     const int num_steps = app->num_selected_flash_options;
 
+    FURI_LOG_I(TAG, "flash_all_files num_steps=%d", num_steps);
+
 #define NUM_FLASH_ITEMS 7
     FlashItem items[NUM_FLASH_ITEMS] = {
         {SelectedFlashBoot,
@@ -187,6 +196,14 @@ static void _flash_all_files(EspFlasherApp* app) {
     int current_step = 1;
     for(FlashItem* item = &items[0]; item < &items[NUM_FLASH_ITEMS]; ++item) {
         if(app->selected_flash_options[item->selected]) {
+            FURI_LOG_I(
+                TAG,
+                "Flashing item desc='%s' step=%d/%d addr=0x%08lx path='%s'",
+                item->description,
+                current_step,
+                num_steps,
+                item->addr,
+                item->path ? item->path : "<null>");
             snprintf(
                 user_msg,
                 sizeof(user_msg),
@@ -198,6 +215,12 @@ static void _flash_all_files(EspFlasherApp* app) {
             loader_port_debug_print(user_msg);
             err = _flash_file(app, item->path, item->addr);
             if(err) {
+                FURI_LOG_E(
+                    TAG,
+                    "Flash failed for '%s' addr=0x%08lx err=%d",
+                    item->description,
+                    item->addr,
+                    err);
                 break;
             }
         }
@@ -207,6 +230,8 @@ static void _flash_all_files(EspFlasherApp* app) {
 static int32_t esp_flasher_flash_bin(void* context) {
     EspFlasherApp* app = (void*)context;
     esp_loader_error_t err;
+
+    FURI_LOG_I(TAG, "flash_bin start quick=%d", app->quickflash);
 
     app->flash_worker_busy = true;
 
@@ -228,6 +253,9 @@ static int32_t esp_flasher_flash_bin(void* context) {
             "Cannot connect to target. Error: %u\nMake sure the device is in bootloader/reflash mode, then try again.\n",
             err);
         loader_port_debug_print(err_msg);
+        FURI_LOG_E(TAG, "esp_loader_connect failed err=%u", err);
+    } else {
+        FURI_LOG_I(TAG, "esp_loader_connect success");
     }
 
     // higher BR
@@ -245,16 +273,20 @@ static int32_t esp_flasher_flash_bin(void* context) {
 
     if(!err) {
         loader_port_debug_print("Connected\n");
+        FURI_LOG_I(TAG, "Connected to target, starting flash");
         uint32_t start_time = furi_get_tick();
 
         if(!_switch_fw(app)) {
             _flash_all_files(app);
+        } else {
+            FURI_LOG_I(TAG, "Switch firmware requested, not flashing new images");
         }
         app->switch_fw = SwitchNotSet;
 
         FuriString* flash_time =
             furi_string_alloc_printf("Flash took: %lds\n", (furi_get_tick() - start_time) / 1000);
         loader_port_debug_print(furi_string_get_cstr(flash_time));
+        FURI_LOG_I(TAG, "%s", furi_string_get_cstr(flash_time));
         furi_string_free(flash_time);
 
         if(app->turbospeed) {
@@ -264,6 +296,7 @@ static int32_t esp_flasher_flash_bin(void* context) {
 
         loader_port_debug_print(
             "Done flashing. Please reset the board manually if it doesn't auto-reset.\n");
+        FURI_LOG_I(TAG, "Done flashing, attempting target reset");
 
         // auto-reset for supported boards
         loader_port_reset_target();
@@ -278,6 +311,7 @@ static int32_t esp_flasher_flash_bin(void* context) {
     notification_message(app->notification, &sequence_reset_blue);
 
     // done
+    FURI_LOG_I(TAG, "flash_bin done err=%d", err);
     app->flash_worker_busy = false;
     app->quickflash = false;
 
@@ -327,6 +361,8 @@ static void _deinitRTS(void) {
 static int32_t esp_flasher_reset(void* context) {
     EspFlasherApp* app = (void*)context;
 
+    FURI_LOG_I(TAG, "reset start reset=%d boot=%d quick=%d", app->reset, app->boot, app->quickflash);
+
     app->flash_worker_busy = true;
 
     _setDTR(false);
@@ -339,18 +375,22 @@ static int32_t esp_flasher_reset(void* context) {
 
     if(app->reset) {
         loader_port_debug_print("Resetting board\n");
+        FURI_LOG_I(TAG, "Resetting target via loader_port_reset_target");
         loader_port_reset_target();
     } else if(app->boot) {
         loader_port_debug_print("Entering bootloader\n");
+        FURI_LOG_I(TAG, "Entering bootloader via loader_port_enter_bootloader");
         loader_port_enter_bootloader();
     }
 
     // done
+    FURI_LOG_I(TAG, "reset done reset=%d boot=%d quick=%d", app->reset, app->boot, app->quickflash);
     app->flash_worker_busy = false;
     app->reset = false;
     app->boot = false;
 
     if(app->quickflash) {
+        FURI_LOG_I(TAG, "Quickflash requested after reset, starting flash");
         esp_flasher_flash_bin(app);
     }
 

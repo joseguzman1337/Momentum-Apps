@@ -1,4 +1,6 @@
 #include "../esp_flasher_app_i.h"
+#include "../esp_flasher_http.h"
+#include "../esp_flasher_worker.h" // for loader_port_debug_print
 
 // Marauder firmware source - https://github.com/justcallmekoko/ESP32Marauder
 // BlackMagic firmware source - https://github.com/flipperdevices/blackmagic-esp32-s2
@@ -197,6 +199,13 @@ bool esp_flasher_scene_quick_on_event(void* context, SceneManagerEvent event) {
             part = APP_DATA_PATH("assets/marauder/esp32_marauder.ino.partitions.bin");
             app0 = APP_DATA_PATH("assets/marauder/boot_app0.bin");
             firm = APP_DATA_PATH("assets/marauder/s2/esp32_marauder.flipper.bin");
+            // Ensure latest Marauder for Flipper Wi-Fi Devboard (S2) is downloaded
+            if(!esp_flasher_http_download_marauder_flipper_s2(app, boot, part, app0, firm)) {
+                loader_port_debug_print(
+                    "Failed to download Marauder firmware.\n"
+                    "Check Wi-Fi/FlipperHTTP connection and try again.\n");
+                return consumed;
+            }
             break;
 
         case QuickS2Boot_Flipperhttp:
