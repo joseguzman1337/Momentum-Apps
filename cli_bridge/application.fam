@@ -1,15 +1,15 @@
 # NOTE: This app relies on non-exported CLI internals (cli_i.h, loader_i.h)
-# which are not available to external FAPs. It is temporarily disabled to
-# avoid build failures for firmware/FAP bundles.
-if False:
-    App(
-        appid="cli_gui",
-        name="CLI-GUI Bridge",
-        apptype=FlipperAppType.EXTERNAL,
-        entry_point="cligui_main",
-        requires=["gui", "cli"],
-        stack_size=8 * 1024,
-        fap_icon="cligui.png",
-        fap_category="Tools",
-        fap_icon_assets="assets",
-    )
+# which are not available to external FAPs. Keep the manifest valid but
+# exclude it from all targets to avoid build warnings and bundle failures.
+App(
+    appid="cli_gui",
+    name="CLI-GUI Bridge",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="cligui_main",
+    requires=["gui", "cli"],
+    stack_size=8 * 1024,
+    fap_icon="cligui.png",
+    fap_category="Tools",
+    fap_icon_assets="assets",
+    targets=[],
+)
