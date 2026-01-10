@@ -2,11 +2,8 @@
 
 #include <FreeRTOS.h>
 #include <cli/cli.h>
-
-#include <cli/cli_i.h>
 #include <cli/cli_vcp.h>
 #include <loader/loader.h>
-#include <loader/loader_i.h>
 
 FuriStreamBuffer* cli_tx_stream = NULL;
 FuriStreamBuffer* cli_rx_stream = NULL;
