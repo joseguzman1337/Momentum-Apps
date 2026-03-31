@@ -1,0 +1,148 @@
+{
+  "name": "repo-repos-momentum-apps",
+  "root": "repos/Momentum-Apps",
+  "projectType": "library",
+  "targets": {
+    "status": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "git -C repos/Momentum-Apps status --short || true"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "fetch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "git -C repos/Momentum-Apps fetch --all --prune || true"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "log": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "git -C repos/Momentum-Apps log --oneline -10 || true"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "manifests": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "find repos/Momentum-Apps \\( -name package.json -o -name pyproject.toml -o -name Cargo.toml -o -name go.mod -o -name setup.py \\) -not -path '*/node_modules/*' -not -path '*/testdata/*' -not -path '*/fixtures/*' -print | sort"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "node-install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && npm install'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "node-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && npm test --if-present'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "node-build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && npm run build --if-present'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "node-lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && npm run lint --if-present'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "node-audit": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && npm audit --audit-level=high || true'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "security-node": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && npm audit --audit-level=high || true'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "python-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && pytest -q || python -m pytest -q || true'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "python-lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && ruff check . || flake8 . || true'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "python-build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && python -m build || true'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "security-python": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'cd repos/Momentum-Apps && pip-audit || true'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    },
+    "security": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -lc 'printf \"security targets: security-node security-python\\n\"'"
+      },
+      "metadata": {
+        "supervisorRequired": true
+      }
+    }
+  },
+  "tags": [
+    "scope:repos",
+    "type:subrepo",
+    "lang:node",
+    "lang:python"
+  ]
+}
