@@ -10,7 +10,6 @@
 #include "secure_messaging.h"
 
 typedef struct {
-    Iso14443_3aListener* iso14443_listener;
     BitBuffer* tx_buffer;
     BitBuffer* rx_buffer;
 
@@ -35,7 +34,7 @@ bool seos_emulator_general_authenticate_2(
     AuthParameters* params,
     BitBuffer* tx_buffer);
 
-void seos_emulator_select_aid(BitBuffer* tx_buffer);
+void seos_emulator_select_aid(BitBuffer* tx_buffer, const uint8_t* aid, size_t aid_len);
 bool seos_emulator_select_adf(
     const uint8_t* oid_list,
     size_t oid_list_len,

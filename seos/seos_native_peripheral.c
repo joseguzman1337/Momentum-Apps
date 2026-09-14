@@ -19,6 +19,8 @@ static uint8_t select_adf_header[] = {0x80, 0xa5, 0x04, 0x00};
 static uint8_t general_authenticate_2_header[] = {0x00, 0x87, 0x00, 0x01};
 static uint8_t secure_messaging_header[] = {0x0c, 0xcb, 0x3f, 0xff};
 
+static uint8_t apdu_header[] = {0x0c, 0xcb, 0x3f, 0xff};
+
 int32_t seos_native_peripheral_task(void* context);
 
 typedef struct {
@@ -55,6 +57,7 @@ static uint16_t seos_svc_callback(SeosServiceEvent event, void* context) {
                 furi_mutex_release(seos_native_peripheral->mq_mutex);
             }
             if(space < MESSAGE_QUEUE_SIZE / 2) {
+                // Log if queue is more than half full, but still accept messages to avoid clogging the queue
                 FURI_LOG_D(TAG, "Queue message.  %ld remaining", space);
             }
             bytes_available = (space - 1) * sizeof(NativePeripheralMessage);
@@ -192,24 +195,25 @@ void seos_native_peripheral_process_message_cred(
     if((flags & BLE_FLAG_SOM) == BLE_FLAG_SOM) {
         bit_buffer_reset(seos_native_peripheral->rx_buffer);
     } else {
-        if (bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer) == 0) {
+        if(bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer) == 0) {
             FURI_LOG_W(TAG, "Expected start of BLE packet");
             return;
         }
     }
 
     bit_buffer_append_bytes(seos_native_peripheral->rx_buffer, message.buf + 1, message.len - 1);
-    
+
     // Only parse if end-of-message flag found
-    if((flags & BLE_FLAG_EOM) == BLE_FLAG_EOM) return;
-    
-    const uint8_t *apdu = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
+    if((flags & BLE_FLAG_EOM) != BLE_FLAG_EOM) return;
+
+    const uint8_t* apdu = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
     const size_t apdu_len = bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer);
 
     if(memcmp(apdu, select_header, sizeof(select_header)) == 0) {
         if(memcmp(apdu + sizeof(select_header) + 1, standard_seos_aid, sizeof(standard_seos_aid)) ==
            0) {
-            seos_emulator_select_aid(response);
+            seos_emulator_select_aid(
+                response, apdu + sizeof(select_header) + 1, sizeof(standard_seos_aid));
             bit_buffer_append_bytes(response, (uint8_t*)success, sizeof(success));
         } else {
             bit_buffer_append_bytes(response, (uint8_t*)file_not_found, sizeof(file_not_found));
@@ -226,6 +230,7 @@ void seos_native_peripheral_process_message_cred(
                seos_native_peripheral->credential,
                response)) {
             view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventADFMatched);
+            bit_buffer_append_bytes(response, (uint8_t*)success, sizeof(success));
         } else {
             FURI_LOG_W(TAG, "Failed to match any ADF OID");
         }
@@ -307,7 +312,6 @@ void seos_native_peripheral_process_message_cred(
 void seos_native_peripheral_process_message_reader(
     SeosNativePeripheral* seos_native_peripheral,
     NativePeripheralMessage message) {
-
     uint8_t flags = message.buf[0];
 
     // Check for error flag
@@ -320,23 +324,24 @@ void seos_native_peripheral_process_message_reader(
     if((flags & BLE_FLAG_SOM) == BLE_FLAG_SOM) {
         bit_buffer_reset(seos_native_peripheral->rx_buffer);
     } else {
-        if (bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer) == 0) {
+        if(bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer) == 0) {
             FURI_LOG_W(TAG, "Expected start of BLE packet");
             return;
         }
     }
 
     bit_buffer_append_bytes(seos_native_peripheral->rx_buffer, message.buf + 1, message.len - 1);
-    
+
     // Only parse if end-of-message flag found
-    if((flags & BLE_FLAG_EOM) == BLE_FLAG_EOM) return;
-    
+    if((flags & BLE_FLAG_EOM) != BLE_FLAG_EOM) return;
+
     BitBuffer* response = bit_buffer_alloc(128); // TODO: MTU
 
-    const uint8_t *rx_data = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
+    const uint8_t* rx_data = bit_buffer_get_data(seos_native_peripheral->rx_buffer);
     const size_t rx_len = bit_buffer_get_size_bytes(seos_native_peripheral->rx_buffer);
 
-    if(memcmp(rx_data + 4, standard_seos_aid, sizeof(standard_seos_aid)) == 0) { // response to select
+    if(memcmp(rx_data + 4, standard_seos_aid, sizeof(standard_seos_aid)) ==
+       0) { // response to select
         FURI_LOG_I(TAG, "Select ADF");
         uint8_t select_adf_header[] = {
             0x80, 0xa5, 0x04, 0x00, (uint8_t)SEOS_ADF_OID_LEN + 2, 0x06, (uint8_t)SEOS_ADF_OID_LEN};
@@ -345,6 +350,16 @@ void seos_native_peripheral_process_message_reader(
         bit_buffer_append_bytes(response, SEOS_ADF_OID, SEOS_ADF_OID_LEN);
         bit_buffer_append_byte(response, 0x00);
         seos_native_peripheral->phase = SELECT_ADF;
+    } else if(
+        seos_native_peripheral->phase == SELECT_ADF &&
+        memcmp(rx_data, file_not_found, sizeof(file_not_found)) == 0) {
+        // Our ADF OID was rejected, close the connection
+        FURI_LOG_W(TAG, "Failed to match ADF OID");
+        bt_disconnect(seos_native_peripheral->bt);
+
+        // Revert UI to advertising state
+        view_dispatcher_send_custom_event(
+            seos_native_peripheral->seos->view_dispatcher, SeosCustomEventAdvertising);
     } else if(memcmp(rx_data, cd02, sizeof(cd02)) == 0) {
         BitBuffer* attribute_value = bit_buffer_alloc(rx_len);
         bit_buffer_append_bytes(attribute_value, rx_data, rx_len);
@@ -405,7 +420,8 @@ void seos_native_peripheral_process_message_reader(
         SecureMessaging* secure_messaging = seos_native_peripheral->secure_messaging;
 
         uint8_t message[] = {0x5c, 0x02, 0xff, 0x00};
-        secure_messaging_wrap_apdu(secure_messaging, message, sizeof(message), response);
+        secure_messaging_wrap_apdu(
+            secure_messaging, message, sizeof(message), apdu_header, sizeof(apdu_header), response);
         seos_native_peripheral->phase = REQUEST_SIO;
         view_dispatcher_send_custom_event(
             seos_native_peripheral->seos->view_dispatcher, SeosCustomEventSIORequested);
@@ -437,7 +453,7 @@ void seos_native_peripheral_process_message_reader(
         FURI_LOG_I(TAG, "SIO Captured, %d bytes", credential->sio_len);
 
         Seos* seos = seos_native_peripheral->seos;
-        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventReaderSuccess);
+        view_dispatcher_send_custom_event(seos->view_dispatcher, SeosCustomEventPollerSuccess);
         bit_buffer_free(rx_buffer);
 
         seos_native_peripheral->phase = SELECT_AID;
@@ -472,6 +488,7 @@ int32_t seos_native_peripheral_task(void* context) {
             uint32_t count = furi_message_queue_get_count(seos_native_peripheral->messages);
             if(count > 0) {
                 if(count > MESSAGE_QUEUE_SIZE / 2) {
+                    // Log if queue is more than half full, but still process all messages to avoid clogging the queue
                     FURI_LOG_I(TAG, "Dequeue message [%ld messages]", count);
                 }
 

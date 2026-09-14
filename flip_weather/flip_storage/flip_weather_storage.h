@@ -9,11 +9,16 @@
 
 void save_settings(
     const char *ssid,
-    const char *password);
+    const char *password,
+    const char *custom_location,
+    bool use_fahrenheit);
 
 bool load_settings(
     char *ssid,
     size_t ssid_size,
     char *password,
-    size_t password_size);
+    size_t password_size,
+    char *custom_location,
+    size_t custom_location_size,
+    bool *use_fahrenheit);
 #endif // FLIP_WEATHER_STORAGE_H

@@ -100,7 +100,7 @@ static bool handle_ir_command_feedback_ex(
     bool send_cmd,
     bool reset_buffers);
 static bool handle_ir_command_feedback(AppState* state, const char* cmd);
-static bool ir_parse_buttons_from_ir_buffer(AppState* state, const uint8_t* buf, size_t len);
+static bool ir_index_buttons_from_file(AppState* state);
 static void ir_send_button_from_file(AppState* state, uint32_t button_index);
 
 // Sniff command definitions
@@ -303,6 +303,33 @@ static const MenuCommand wifi_scanning_commands[] = {
         .details_text = "Stops Pineapple detection mode.",
     },
     {
+        .label = "Flock Detection",
+        .command = "flockscan\n",
+        .details_header = "Flock Detection",
+        .details_text = "Detect Flock Safety cameras,\n"
+                        "extended battery units, and\n"
+                        "Penguin surveillance devices\n"
+                        "on 2.4 GHz Wi-Fi.\n"
+                        "Uses OUI matching, wildcard\n"
+                        "probe detection, and SSID\n"
+                        "keyword matching.\n",
+    },
+    {
+        .label = "Flock List",
+        .command = "flocklist\n",
+        .details_header = "Flock List",
+        .details_text = "List detected Flock Safety\n"
+                        "surveillance devices.\n"
+                        "Run after Flock Detection.\n",
+    },
+    {
+        .label = "Stop Flock Detection",
+        .command = "flockstop\n",
+        .details_header = "Stop Flock Detection",
+        .details_text = "Stops Flock Safety camera\n"
+                        "detection scanning.\n",
+    },
+    {
         .label = "Channel Congestion",
         .command = "congestion\n",
         .details_header = "Channel Congestion",
@@ -340,6 +367,41 @@ static const MenuCommand wifi_scanning_commands[] = {
                         "- Provide an IP address (e.g., 192.168.1.10)\n"
                         "- Scans common SSH ports and reports responses\n"
                         "- Requires network connectivity\n\n",
+    },
+    {
+        .label = "Full Environment Sweep",
+        .command = "sweep\n",
+        .details_header = "Environment Sweep",
+        .details_text = "Full sweep: WiFi APs, stations,\n"
+                        "and BLE devices.\n"
+                        "Saves CSV report to SD.\n"
+                        "Uses default timing for scan.\n",
+    },
+    {
+        .label = "Combined AP+STA Scan",
+        .command = "scanall",
+        .needs_input = true,
+        .input_text = "Seconds",
+        .details_header = "Scan All",
+        .details_text = "Combined AP and station scan\n"
+                        "with summary report.\n"
+                        "Optionally specify duration.\n",
+    },
+    {
+        .label = "Track Selected AP",
+        .command = "trackap\n",
+        .details_header = "Track AP Signal",
+        .details_text = "Track selected AP signal\n"
+                        "strength (RSSI) in real-time.\n"
+                        "Select an AP first.\n",
+    },
+    {
+        .label = "Track Selected Station",
+        .command = "tracksta\n",
+        .details_header = "Track Station Signal",
+        .details_text = "Track selected station signal\n"
+                        "strength (RSSI) in real-time.\n"
+                        "Select a station first.\n",
     },
     {
         .label = "Stop Listen Probes",
@@ -785,6 +847,18 @@ static const MenuCommand wifi_settings_commands[] = {
                         "brightness level.",
     },
     {
+        .label = "Set RGB LED Count",
+        .command = "setrgbcount",
+        .needs_input = true,
+        .input_text = "1-512",
+        .details_header = "Set RGB LED Count",
+        .details_text = "Set the number of RGB LEDs\n"
+                        "connected (1-512).\n"
+                        "Effects will span the correct\n"
+                        "length. Reinitializes if pins\n"
+                        "are already configured.\n",
+    },
+    {
         .label = "Settings List",
         .command = "settings list\n",
         .details_header = "List Settings",
@@ -1007,6 +1081,48 @@ static const MenuCommand ble_scanning_commands[] = {
         .details_text = "Select a Flipper by number to track RSSI strength.",
     },
     {
+        .label = "Scan GATT Devices",
+        .command = "blescan -g\n",
+        .details_header = "GATT Device Scanner",
+        .details_text = "Scan for connectable BLE\n"
+                        "devices for GATT enumeration.\n"
+                        "Shows device addresses and\n"
+                        "connection capability.\n",
+    },
+    {
+        .label = "List GATT Devices",
+        .command = "listgatt\n",
+        .details_header = "List GATT Devices",
+        .details_text = "List discovered GATT devices\n"
+                        "with tracker type detection.\n",
+    },
+    {
+        .label = "Select GATT Device",
+        .command = "selectgatt",
+        .needs_input = true,
+        .input_text = "Device Index",
+        .details_header = "Select GATT Device",
+        .details_text = "Select a GATT device by index\n"
+                        "for enumeration or tracking.\n",
+    },
+    {
+        .label = "Enumerate GATT Services",
+        .command = "enumgatt\n",
+        .details_header = "Enumerate GATT",
+        .details_text = "Connect to selected device\n"
+                        "and enumerate its GATT\n"
+                        "services, characteristics,\n"
+                        "and descriptors.\n",
+    },
+    {
+        .label = "Track GATT Device",
+        .command = "trackgatt\n",
+        .details_header = "Track GATT Device",
+        .details_text = "Track selected GATT device\n"
+                        "using real-time RSSI signal\n"
+                        "strength monitoring.\n",
+    },
+    {
         .label = "View All BLE Traffic",
         .command = "blescan -r\n",
         .details_header = "BLE Raw Traffic",
@@ -1093,6 +1209,25 @@ static const MenuCommand gps_commands[] = {
                         "- Satellite Status\n",
     },
     {
+        .label = "Set GPS Pin",
+        .command = "gpspin",
+        .needs_input = true,
+        .input_text = "Pin Number",
+        .details_header = "Set GPS RX Pin",
+        .details_text = "Set the GPS RX pin for\n"
+                        "external GPS modules.\n"
+                        "Setting persists to NVS.\n"
+                        "Restart GPS commands to apply.\n",
+    },
+    {
+        .label = "View GPS Pin",
+        .command = "gpspin\n",
+        .details_header = "View GPS RX Pin",
+        .details_text = "Shows current GPS RX pin\n"
+                        "configuration for external\n"
+                        "GPS modules.\n",
+    },
+    {
         .label = "Start Wardriving",
         .command = "startwd\n",
         .capture_prefix = "wardrive_wifi",
@@ -1134,6 +1269,110 @@ static const MenuCommand gps_commands[] = {
                         "- GPS Info Updates\n"
                         "- WiFi Wardriving\n"
                         "- BLE Wardriving\n",
+    },
+};
+
+// Aerial Detector menu command definitions - all in one menu
+static const MenuCommand aerial_commands[] = {
+    {
+        .label = "Start Scan (30s)",
+        .command = "aerialscan 30\n",
+        .details_header = "Scan for Drones",
+        .details_text = "Scans for aerial devices:\n"
+                        "- OpenDroneID (WiFi/BLE)\n"
+                        "- DJI drones\n"
+                        "- Drone networks\n"
+                        "Phase 1: WiFi (all channels)\n"
+                        "Phase 2: BLE\n"
+                        "Duration: 30 seconds\n",
+    },
+    {
+        .label = "Quick Scan (15s)",
+        .command = "aerialscan 15\n",
+        .details_header = "Quick Scan",
+        .details_text = "Fast 15 second scan for\n"
+                        "nearby aerial devices.\n",
+    },
+    {
+        .label = "Extended Scan (60s)",
+        .command = "aerialscan 60\n",
+        .details_header = "Extended Scan",
+        .details_text = "Extended 60 second scan\n"
+                        "for maximum coverage.\n",
+    },
+    {
+        .label = "List Detected Drones",
+        .command = "aeriallist\n",
+        .details_header = "Detected Devices",
+        .details_text = "Lists all detected aerial\n"
+                        "devices with:\n"
+                        "- Device ID & Type\n"
+                        "- GPS coordinates\n"
+                        "- Altitude & Speed\n"
+                        "- Operator location\n"
+                        "- RSSI signal\n",
+    },
+    {
+        .label = "Track Drone by Index",
+        .command = "aerialtrack",
+        .needs_input = true,
+        .input_text = "Device Index",
+        .details_header = "Track Drone",
+        .details_text = "Track specific drone by\n"
+                        "index from aeriallist.\n"
+                        "Shows real-time updates\n"
+                        "for selected device.\n",
+    },
+    {
+        .label = "Track Drone by MAC",
+        .command = "aerialtrack",
+        .needs_input = true,
+        .input_text = "MAC Address",
+        .details_header = "Track by MAC",
+        .details_text = "Track specific drone by\n"
+                        "MAC address.\n"
+                        "Format: aa:bb:cc:dd:ee:ff\n",
+    },
+    {
+        .label = "Spoof Test Drone",
+        .command = "aerialspoof\n",
+        .details_header = "Test Spoof",
+        .details_text = "Broadcasts test RemoteID:\n"
+                        "ID: GHOST-TEST\n"
+                        "Location: San Francisco\n"
+                        "Altitude: 100m\n"
+                        "Status: Airborne\n\n"
+                        "Note: WiFi suspended\n"
+                        "during BLE broadcast\n",
+    },
+    {
+        .label = "Custom Spoof",
+        .command = "aerialspoof",
+        .needs_input = true,
+        .input_text = "ID Lat Lon Alt",
+        .details_header = "Custom Spoof",
+        .details_text = "Broadcast custom RemoteID.\n"
+                        "Format:\n"
+                        "DRONE-ID lat lon alt\n\n"
+                        "Example:\n"
+                        "GHOST-1 40.7128 -74.0060 100\n",
+    },
+    {
+        .label = "Stop Spoofing",
+        .command = "aerialspoofstop\n",
+        .details_header = "Stop Spoofing",
+        .details_text = "Stops RemoteID broadcast\n"
+                        "and restores WiFi.\n",
+    },
+    {
+        .label = "Stop All",
+        .command = "aerialstop\n",
+        .details_header = "Stop All Operations",
+        .details_text = "Stops all active aerial\n"
+                        "operations including:\n"
+                        "- Scanning\n"
+                        "- Tracking\n"
+                        "- Spoofing\n",
     },
 };
 
@@ -1367,18 +1606,159 @@ static bool ir_query_and_parse_show(AppState* state, uint32_t remote_index) {
     return state->ir_signal_count > 0;
 }
 
+// Stream/index .ir file without holding entire file in RAM
+static bool ir_index_buttons_from_file(AppState* state) {
+    if(!state || !state->ir_file_path[0]) return false;
+
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* file = storage_file_alloc(storage);
+    bool ok = false;
+
+    do {
+        if(!storage_file_open(file, state->ir_file_path, FSAM_READ, FSOM_OPEN_EXISTING)) break;
+
+        const size_t buf_size = 512;
+        uint8_t buf[buf_size];
+        size_t global_offset = 0;
+        bool in_block = false;
+        size_t block_start = 0;
+
+        state->ir_signal_count = 0;
+
+        while(true) {
+            uint16_t read = storage_file_read(file, buf, buf_size);
+            if(read == 0) break;
+
+            size_t pos = 0;
+            while(pos < read && state->ir_signal_count < COUNT_OF(state->ir_signals)) {
+                // Consume whitespace
+                while(pos < read && (buf[pos] == '\r' || buf[pos] == '\n' || buf[pos] == ' ' ||
+                                     buf[pos] == '\t')) {
+                    if(buf[pos] == '\n' || buf[pos] == '\r') {
+                        if(in_block) {
+                            // Potential end of block handled when we see next header
+                        }
+                    }
+                    pos++;
+                    global_offset++;
+                }
+                if(pos >= read) break;
+
+                // Skip comments
+                if(buf[pos] == '#') {
+                    while(pos < read && buf[pos] != '\n' && buf[pos] != '\r') {
+                        pos++;
+                        global_offset++;
+                    }
+                    continue;
+                }
+
+                // Detect "name:" start
+                const char name_hdr[] = "name:";
+                if(read - pos >= sizeof(name_hdr) - 1 &&
+                   memcmp(buf + pos, name_hdr, sizeof(name_hdr) - 1) == 0) {
+                    // If we were already in a block, close it at current global_offset
+                    if(in_block && state->ir_signal_count > 0) {
+                        state->ir_signal_block_lengths[state->ir_signal_count - 1] =
+                            (global_offset)-state
+                                ->ir_signal_block_offsets[state->ir_signal_count - 1];
+                    }
+
+                    in_block = true;
+                    block_start = global_offset;
+
+                    // Parse name on this line to populate label
+                    size_t line_end = pos;
+                    while(line_end < read && buf[line_end] != '\n' && buf[line_end] != '\r')
+                        line_end++;
+
+                    size_t val_start = pos + (sizeof(name_hdr) - 1);
+                    while(val_start < line_end &&
+                          (buf[val_start] == ' ' || buf[val_start] == '\t')) {
+                        val_start++;
+                    }
+                    size_t val_end = line_end;
+                    while(val_end > val_start &&
+                          (buf[val_end - 1] == ' ' || buf[val_end - 1] == '\t')) {
+                        val_end--;
+                    }
+
+                    if(state->ir_signal_count < COUNT_OF(state->ir_signals)) {
+                        IrSignalEntry* e = &state->ir_signals[state->ir_signal_count];
+                        size_t name_len = (val_end > val_start) ? (val_end - val_start) : 0;
+                        if(name_len >= sizeof(e->name)) name_len = sizeof(e->name) - 1;
+                        if(name_len > 0) {
+                            memcpy(e->name, buf + val_start, name_len);
+                            e->name[name_len] = '\0';
+                        } else {
+                            e->name[0] = '\0';
+                        }
+                        e->index = state->ir_signal_count; // use slot index
+                        e->proto[0] = '\0';
+
+                        state->ir_signal_block_offsets[state->ir_signal_count] = block_start;
+                        state->ir_signal_block_lengths[state->ir_signal_count] = 0; // temp
+                        state->ir_signal_count++;
+                    }
+
+                    global_offset += (line_end - pos);
+                    pos = line_end;
+                    continue;
+                }
+
+                // Detect end of block by seeing next header in subsequent iterations
+                // Consume rest of line
+                while(pos < read && buf[pos] != '\n' && buf[pos] != '\r') {
+                    pos++;
+                    global_offset++;
+                }
+            }
+        }
+
+        // Close last block length if open
+        if(in_block && state->ir_signal_count > 0) {
+            uint64_t file_size = storage_file_size(file);
+            state->ir_signal_block_lengths[state->ir_signal_count - 1] =
+                (size_t)file_size - state->ir_signal_block_offsets[state->ir_signal_count - 1];
+        }
+
+        ok = state->ir_signal_count > 0;
+    } while(false);
+
+    if(file) {
+        storage_file_close(file);
+        storage_file_free(file);
+    }
+    if(storage) {
+        furi_record_close(RECORD_STORAGE);
+    }
+
+    return ok;
+}
+
 static bool ir_query_and_parse_universals(AppState* state) {
     if(!state || !state->uart_context) return false;
 
     uart_reset_text_buffers(state->uart_context);
     send_uart_command("ir universals list\n", state);
-    furi_delay_ms(200);
 
     char buffer[IR_UART_PARSE_BUF_SIZE];
 
     size_t len = 0;
-    if(!uart_copy_text_buffer_tail(state->uart_context, buffer, IR_UART_PARSE_BUF_SIZE, &len) ||
-       len == 0) {
+    uint32_t start = furi_get_tick();
+    const uint32_t timeout_ms = 3000;
+    while(furi_get_tick() - start < timeout_ms) {
+        furi_delay_ms(100);
+        if(uart_copy_text_buffer_tail(state->uart_context, buffer, IR_UART_PARSE_BUF_SIZE, &len) &&
+           len > 0) {
+            if(strstr(buffer, "Universal Files in ") || strstr(buffer, "Built-in") ||
+               strstr(buffer, "(none)") || strchr(buffer, '.')) {
+                break;
+            }
+        }
+    }
+
+    if(len == 0) {
         return false;
     }
 
@@ -1515,77 +1895,6 @@ static bool ir_query_and_parse_universal_buttons(AppState* state, const char* fi
     return result;
 }
 
-static bool ir_parse_buttons_from_ir_buffer(AppState* state, const uint8_t* buf, size_t len) {
-    if(!state || !buf || len == 0) return false;
-
-    state->ir_signal_count = 0;
-
-    size_t pos = 0;
-    while(pos < len && state->ir_signal_count < COUNT_OF(state->ir_signals)) {
-        while(pos < len &&
-              (buf[pos] == '\r' || buf[pos] == '\n' || buf[pos] == ' ' || buf[pos] == '\t')) {
-            pos++;
-        }
-
-        if(pos >= len) break;
-
-        if(buf[pos] == '#') {
-            while(pos < len && buf[pos] != '\n' && buf[pos] != '\r')
-                pos++;
-            continue;
-        }
-
-        if(len - pos >= 9 && memcmp(buf + pos, "Filetype:", 9) == 0) {
-            while(pos < len && buf[pos] != '\n' && buf[pos] != '\r')
-                pos++;
-            continue;
-        }
-        if(len - pos >= 8 && memcmp(buf + pos, "Version:", 8) == 0) {
-            while(pos < len && buf[pos] != '\n' && buf[pos] != '\r')
-                pos++;
-            continue;
-        }
-
-        if(len - pos >= 5 && memcmp(buf + pos, "name:", 5) == 0) {
-            size_t line_start = pos;
-            size_t line_end = pos;
-            while(line_end < len && buf[line_end] != '\n' && buf[line_end] != '\r')
-                line_end++;
-
-            size_t val_start = pos + 5;
-            while(val_start < line_end && (buf[val_start] == ' ' || buf[val_start] == '\t')) {
-                val_start++;
-            }
-            size_t val_end = line_end;
-            while(val_end > val_start && (buf[val_end - 1] == ' ' || buf[val_end - 1] == '\t')) {
-                val_end--;
-            }
-
-            IrSignalEntry* e = &state->ir_signals[state->ir_signal_count];
-            size_t name_len = (val_end > val_start) ? (val_end - val_start) : 0;
-            if(name_len >= sizeof(e->name)) name_len = sizeof(e->name) - 1;
-            if(name_len > 0) {
-                memcpy(e->name, buf + val_start, name_len);
-                e->name[name_len] = '\0';
-            } else {
-                e->name[0] = '\0';
-            }
-
-            e->index = (uint32_t)line_start;
-            e->proto[0] = '\0';
-
-            state->ir_signal_count++;
-            pos = line_end;
-            continue;
-        }
-
-        while(pos < len && buf[pos] != '\n' && buf[pos] != '\r')
-            pos++;
-    }
-
-    return state->ir_signal_count > 0;
-}
-
 static void ir_show_remotes_menu(AppState* state) {
     if(!state || !state->ir_remotes_menu) return;
 
@@ -1605,8 +1914,8 @@ static void ir_show_remotes_menu(AppState* state) {
         submenu_set_selected_item(state->ir_remotes_menu, selected);
     }
 
-    view_dispatcher_switch_to_view(state->view_dispatcher, 31);
-    state->current_view = 31;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_IR_REMOTES);
+    state->current_view = VIEW_IR_REMOTES;
 }
 
 static void ir_show_buttons_menu(AppState* state) {
@@ -1628,8 +1937,8 @@ static void ir_show_buttons_menu(AppState* state) {
         submenu_set_selected_item(state->ir_buttons_menu, 0);
     }
 
-    view_dispatcher_switch_to_view(state->view_dispatcher, 32);
-    state->current_view = 32;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_IR_BUTTONS);
+    state->current_view = VIEW_IR_BUTTONS;
 }
 
 static void ir_show_universals_menu(AppState* state) {
@@ -1647,8 +1956,8 @@ static void ir_show_universals_menu(AppState* state) {
         submenu_set_selected_item(state->ir_universals_menu, 0);
     }
 
-    view_dispatcher_switch_to_view(state->view_dispatcher, 33);
-    state->current_view = 33;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_IR_UNIVERSALS);
+    state->current_view = VIEW_IR_UNIVERSALS;
 }
 
 static void ir_show_error(AppState* state, const char* text) {
@@ -1659,8 +1968,8 @@ static void ir_show_error(AppState* state, const char* text) {
     confirmation_view_set_text(state->confirmation_view, text ? text : "IR error");
     confirmation_view_set_ok_callback(state->confirmation_view, app_info_ok_callback, state);
     confirmation_view_set_cancel_callback(state->confirmation_view, app_info_ok_callback, state);
-    view_dispatcher_switch_to_view(state->view_dispatcher, 7);
-    state->current_view = 7;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_CONFIRMATION);
+    state->current_view = VIEW_CONFIRMATION;
 }
 
 static bool cycle_menu_item(
@@ -1728,7 +2037,7 @@ static void confirmation_ok_callback(void* context) {
 
             if(!file_opened) {
                 FURI_LOG_E("Capture", "Failed to open PCAP file. Aborting capture command.");
-                free(cmd_ctx);
+                confirmation_cancel_callback(cmd_ctx);
                 return;
             }
 
@@ -1748,31 +2057,87 @@ static void confirmation_ok_callback(void* context) {
                 ""); // No capture files needed
         }
     }
+    if(cmd_ctx->state) cmd_ctx->state->active_confirm_context = NULL;
     free(cmd_ctx);
+}
+
+void navigate_to_view(AppState* state, uint8_t view_id) {
+    if(!state || !state->view_dispatcher) return;
+    switch(view_id) {
+    case VIEW_MAIN:
+        show_main_menu(state);
+        break;
+    case VIEW_WIFI:
+        show_wifi_menu(state);
+        break;
+    case VIEW_WIFI_SCANNING:
+        show_wifi_scanning_menu(state);
+        break;
+    case VIEW_WIFI_CAPTURE:
+        show_wifi_capture_menu(state);
+        break;
+    case VIEW_WIFI_ATTACK:
+        show_wifi_attack_menu(state);
+        break;
+    case VIEW_WIFI_NETWORK:
+        show_wifi_network_menu(state);
+        break;
+    case VIEW_WIFI_SETTINGS:
+        show_wifi_settings_menu(state);
+        break;
+    case VIEW_AERIAL:
+        show_aerial_menu(state);
+        break;
+    case VIEW_BLE:
+        show_ble_menu(state);
+        break;
+    case VIEW_BLE_SCANNING:
+        show_ble_scanning_menu(state);
+        break;
+    case VIEW_BLE_CAPTURE:
+        show_ble_capture_menu(state);
+        break;
+    case VIEW_BLE_ATTACK:
+        show_ble_attack_menu(state);
+        break;
+    case VIEW_GPS:
+        show_gps_menu(state);
+        break;
+    case VIEW_IR:
+        show_ir_menu(state);
+        break;
+    case VIEW_IR_REMOTES:
+        ir_show_remotes_menu(state);
+        break;
+    case VIEW_IR_BUTTONS:
+        ir_show_buttons_menu(state);
+        break;
+    case VIEW_IR_UNIVERSALS:
+        ir_show_universals_menu(state);
+        break;
+    case VIEW_STATUS_IDLE:
+        show_status_idle_menu(state);
+        break;
+    case VIEW_SETTINGS_CONFIG:
+    case VIEW_SETTINGS_ACTIONS:
+        view_dispatcher_switch_to_view(state->view_dispatcher, view_id);
+        state->current_view = view_id;
+        break;
+    default:
+        show_main_menu(state);
+        break;
+    }
 }
 
 static void confirmation_cancel_callback(void* context) {
     MenuCommandContext* cmd_ctx = context;
     if(cmd_ctx && cmd_ctx->state) {
-        switch(cmd_ctx->state->previous_view) {
-        case 1:
-            show_wifi_menu(cmd_ctx->state);
-            break;
-        case 2:
-            show_ble_menu(cmd_ctx->state);
-            break;
-        case 3:
-            show_gps_menu(cmd_ctx->state);
-            break;
-        default:
-            show_main_menu(cmd_ctx->state);
-            break;
-        }
+        cmd_ctx->state->active_confirm_context = NULL;
+        navigate_to_view(cmd_ctx->state, cmd_ctx->state->previous_view);
     }
     free(cmd_ctx);
 }
 
-// Add at top with other declarations:
 static void app_info_ok_callback(void* context) {
     AppState* state = context;
     if(!state) return;
@@ -1800,8 +2165,8 @@ static void show_command_details(AppState* state, const MenuCommand* command) {
     confirmation_view_set_cancel_callback(state->confirmation_view, app_info_ok_callback, state);
 
     // Switch to confirmation view
-    view_dispatcher_switch_to_view(state->view_dispatcher, 7);
-    state->current_view = 7;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_CONFIRMATION);
+    state->current_view = VIEW_CONFIRMATION;
 }
 
 static void error_callback(void* context) {
@@ -1819,8 +2184,8 @@ static void show_result_dialog(AppState* state, const char* header, const char* 
     confirmation_view_set_text(state->confirmation_view, text ? text : "");
     confirmation_view_set_ok_callback(state->confirmation_view, app_info_ok_callback, state);
     confirmation_view_set_cancel_callback(state->confirmation_view, app_info_ok_callback, state);
-    view_dispatcher_switch_to_view(state->view_dispatcher, 7);
-    state->current_view = 7;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_CONFIRMATION);
+    state->current_view = VIEW_CONFIRMATION;
 }
 
 static void ir_sweep_stop_callback(void* context) {
@@ -1859,8 +2224,8 @@ static bool handle_ir_command_feedback_ex(
         confirmation_view_set_ok_callback(state->confirmation_view, ir_sweep_stop_callback, state);
         confirmation_view_set_cancel_callback(
             state->confirmation_view, app_info_ok_callback, state);
-        view_dispatcher_switch_to_view(state->view_dispatcher, 7);
-        state->current_view = 7;
+        view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_CONFIRMATION);
+        state->current_view = VIEW_CONFIRMATION;
     } else if(is_dazzler) {
         show_result_dialog(state, "IR Dazzler", "Working...");
     } else {
@@ -1870,8 +2235,8 @@ static bool handle_ir_command_feedback_ex(
     char buffer[512];
     char raw_buffer[512];
     size_t len = 0;
-    char message[128];
-    char summary[96];
+    char* message = state->confirmation_message;
+    char summary[128];
     message[0] = '\0';
     summary[0] = '\0';
     raw_buffer[0] = '\0';
@@ -1903,26 +2268,35 @@ static bool handle_ir_command_feedback_ex(
                 char* tag = strstr(line, "IR_DAZZLER:");
                 if(tag) {
                     const char* code = tag + 11; // skip "IR_DAZZLER:"
-                    while(*code == ' ' || *code == '\t') code++;
+                    while(*code == ' ' || *code == '\t')
+                        code++;
 
                     if(strncmp(code, "STARTED", 7) == 0) {
-                        strncpy(message, "Dazzler started successfully", sizeof(message) - 1);
+                        strncpy(
+                            message,
+                            "Dazzler started successfully",
+                            sizeof(state->confirmation_message) - 1);
                     } else if(strncmp(code, "FAILED", 6) == 0) {
-                        strncpy(message, "Dazzler failed", sizeof(message) - 1);
+                        strncpy(
+                            message, "Dazzler failed", sizeof(state->confirmation_message) - 1);
                     } else if(strncmp(code, "ALREADY_RUNNING", 15) == 0) {
-                        strncpy(message, "Dazzler is already running", sizeof(message) - 1);
+                        strncpy(
+                            message,
+                            "Dazzler is already running",
+                            sizeof(state->confirmation_message) - 1);
                     } else if(strncmp(code, "STOPPING", 8) == 0) {
-                        strncpy(message, "Stopped dazzler.", sizeof(message) - 1);
+                        strncpy(
+                            message, "Stopped dazzler.", sizeof(state->confirmation_message) - 1);
                     } else if(strncmp(code, "NOT_RUNNING", 11) == 0) {
-                        strncpy(message, "Dazzler is not running", sizeof(message) - 1);
+                        strncpy(
+                            message,
+                            "Dazzler is not running",
+                            sizeof(state->confirmation_message) - 1);
                     } else {
                         snprintf(
-                            message,
-                            sizeof(message),
-                            "Dazzler: %.64s",
-                            code);
+                            message, sizeof(state->confirmation_message), "Dazzler: %.64s", code);
                     }
-                    message[sizeof(message) - 1] = '\0';
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
@@ -1996,7 +2370,18 @@ static bool handle_ir_command_feedback_ex(
                     }
 
                     if(saw_ok && summary[0] && !message[0]) {
-                        snprintf(message, sizeof(message), "Send OK%s%s", "\n", summary);
+                        // Truncate summary if needed to prevent buffer overflow when combining
+                        size_t max_len = sizeof(state->confirmation_message) -
+                                         10; // Reserve space for "Send OK\n"
+                        if(strlen(summary) > max_len) {
+                            summary[max_len] = '\0';
+                        }
+                        snprintf(
+                            message,
+                            sizeof(state->confirmation_message),
+                            "Send OK%s%s",
+                            "\n",
+                            summary);
                         start = timeout_ms + start;
                         break;
                     }
@@ -2005,8 +2390,8 @@ static bool handle_ir_command_feedback_ex(
             }
 
             if(is_inline && strstr(line, "IR inline parse failed")) {
-                strncpy(message, "Inline parse failed", sizeof(message) - 1);
-                message[sizeof(message) - 1] = '\0';
+                strncpy(message, "Inline parse failed", sizeof(state->confirmation_message) - 1);
+                message[sizeof(state->confirmation_message) - 1] = '\0';
                 start = timeout_ms + start;
                 break;
             }
@@ -2016,45 +2401,66 @@ static bool handle_ir_command_feedback_ex(
                    strstr(line, "status OK") || strstr(line, "ir signal transmission complete")) {
                     saw_ok = true;
                     if(summary[0]) {
-                        snprintf(message, sizeof(message), "Send OK%s%s", "\n", summary);
+                        // Truncate summary if needed
+                        size_t max_len = sizeof(state->confirmation_message) - 10;
+                        if(strlen(summary) > max_len) {
+                            summary[max_len] = '\0';
+                        }
+                        snprintf(
+                            message,
+                            sizeof(state->confirmation_message),
+                            "Send OK%s%s",
+                            "\n",
+                            summary);
                         start = timeout_ms + start;
                         break;
                     }
                 }
                 if(strstr(line, "send FAIL") || strstr(line, "status: FAIL") ||
                    strstr(line, "status FAIL") || strstr(line, "status: ERROR")) {
-                    strncpy(message, "Send failed", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(message, "Send failed", sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
                 if(strstr(line, "failed to read list")) {
-                    strncpy(message, "Failed to read list", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(
+                        message, "Failed to read list", sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
                 if(strstr(line, "no signals in")) {
-                    strncpy(message, "No signals in list", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(
+                        message, "No signals in list", sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
                 if(strstr(line, "remote index out of range")) {
-                    strncpy(message, "Remote index out of range", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(
+                        message,
+                        "Remote index out of range",
+                        sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
                 if(strstr(line, "index out of range")) {
-                    strncpy(message, "Button index out of range", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(
+                        message,
+                        "Button index out of range",
+                        sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
                 if(strstr(line, "invalid universal index")) {
-                    strncpy(message, "Invalid universal index", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(
+                        message,
+                        "Invalid universal index",
+                        sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
@@ -2063,28 +2469,37 @@ static bool handle_ir_command_feedback_ex(
                     strncpy(
                         message,
                         "Universal send already running; use 'stop' to cancel.",
-                        sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                        sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
                 if(strstr(line, "universal sendall started")) {
                 }
                 if(strstr(line, "no builtin signals named")) {
-                    strncpy(message, "No builtin signals with that name.", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(
+                        message,
+                        "No builtin signals with that name.",
+                        sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
                 if(strstr(line, "no signals named")) {
-                    strncpy(message, "No file signals with that name.", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(
+                        message,
+                        "No file signals with that name.",
+                        sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     start = timeout_ms + start;
                     break;
                 }
                 if(strstr(line, "universal sendall finished")) {
-                    strncpy(message, "Universal send finished.", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(
+                        message,
+                        "Universal send finished.",
+                        sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     confirmation_view_set_header(state->confirmation_view, "Universal send");
                     confirmation_view_set_text(state->confirmation_view, message);
                     confirmation_view_set_ok_callback(
@@ -2095,8 +2510,11 @@ static bool handle_ir_command_feedback_ex(
                     break;
                 }
                 if(strstr(line, "universal sendall stopped")) {
-                    strncpy(message, "Universal send stopped.", sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
+                    strncpy(
+                        message,
+                        "Universal send stopped.",
+                        sizeof(state->confirmation_message) - 1);
+                    message[sizeof(state->confirmation_message) - 1] = '\0';
                     confirmation_view_set_header(state->confirmation_view, "Universal send");
                     confirmation_view_set_text(state->confirmation_view, message);
                     confirmation_view_set_ok_callback(
@@ -2113,8 +2531,8 @@ static bool handle_ir_command_feedback_ex(
     }
 
     if(!message[0] && saw_ok) {
-        strncpy(message, "Send OK", sizeof(message) - 1);
-        message[sizeof(message) - 1] = '\0';
+        strncpy(message, "Send OK", sizeof(state->confirmation_message) - 1);
+        message[sizeof(state->confirmation_message) - 1] = '\0';
     }
 
     if(message[0]) {
@@ -2163,7 +2581,7 @@ static void text_input_result_callback(void* context) {
 #ifdef HAS_MOMENTUM_SUPPORT
         text_input_show_illegal_symbols(input_state->text_input, true);
 #endif
-        view_dispatcher_switch_to_view(input_state->view_dispatcher, 6);
+        view_dispatcher_switch_to_view(input_state->view_dispatcher, VIEW_TEXT_INPUT);
         return;
     }
     if(input_state->connect_input_stage == 2) {
@@ -2200,24 +2618,17 @@ static void send_ir_file(AppState* state) {
         return;
     }
 
-    if(!ir_data || ir_size == 0) {
-        if(ir_data) free(ir_data);
-        return;
-    }
-
+    // Clear any cached buffer; we stream now
     if(state->ir_file_buffer) {
-        free(state->ir_file_buffer);
-    }
-
-    state->ir_file_buffer = ir_data;
-    state->ir_file_buffer_size = ir_size;
-    state->ir_universal_buttons_mode = false;
-    state->ir_file_buttons_mode = true;
-
-    if(!ir_parse_buttons_from_ir_buffer(state, state->ir_file_buffer, state->ir_file_buffer_size)) {
         free(state->ir_file_buffer);
         state->ir_file_buffer = NULL;
         state->ir_file_buffer_size = 0;
+    }
+
+    state->ir_universal_buttons_mode = false;
+    state->ir_file_buttons_mode = true;
+
+    if(!ir_index_buttons_from_file(state)) {
         state->ir_file_buttons_mode = false;
         ir_show_error(state, "No IR buttons found.");
         return;
@@ -2227,59 +2638,48 @@ static void send_ir_file(AppState* state) {
 }
 
 static void ir_send_button_from_file(AppState* state, uint32_t button_index) {
-    if(!state || !state->uart_context || !state->ir_file_buffer) return;
+    if(!state || !state->uart_context) return;
     if(button_index >= state->ir_signal_count) return;
+    if(!state->ir_file_path[0]) return;
 
-    IrSignalEntry* sig = &state->ir_signals[button_index];
-    size_t start = sig->index;
-    if(start >= state->ir_file_buffer_size) return;
+    size_t start = state->ir_signal_block_offsets[button_index];
+    size_t payload_len = state->ir_signal_block_lengths[button_index];
+    if(payload_len == 0) return;
 
-    const uint8_t* buf = state->ir_file_buffer;
-    size_t len = state->ir_file_buffer_size;
-
-    size_t pos = start;
-    size_t block_end = start;
-    bool first_line = true;
-
-    while(pos < len) {
-        size_t line_start = pos;
-        size_t line_end = line_start;
-        while(line_end < len && buf[line_end] != '\n' && buf[line_end] != '\r')
-            line_end++;
-
-        size_t t = line_start;
-        while(t < line_end && (buf[t] == ' ' || buf[t] == '\t'))
-            t++;
-
-        if(!first_line) {
-            if(t < line_end) {
-                if(buf[t] == '#') break;
-                if(line_end - t >= 5 && memcmp(buf + t, "name:", 5) == 0) break;
-            }
-        }
-
-        block_end = line_end;
-        while(block_end < len && (buf[block_end] == '\n' || buf[block_end] == '\r'))
-            block_end++;
-
-        pos = block_end;
-        first_line = false;
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* file = storage_file_alloc(storage);
+    if(!storage_file_open(file, state->ir_file_path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        storage_file_free(file);
+        furi_record_close(RECORD_STORAGE);
+        return;
     }
 
-    if(block_end <= start) return;
+    storage_file_seek(file, start, true);
 
-    size_t payload_len = block_end - start;
+    const size_t chunk = 512;
+    uint8_t buf[chunk];
     const char* ir_begin_marker = "[IR/BEGIN]";
     const char* ir_close_marker = "[IR/CLOSE]";
 
     uart_reset_text_buffers(state->uart_context);
     uart_send(state->uart_context, (const uint8_t*)ir_begin_marker, 10);
     uart_send(state->uart_context, (const uint8_t*)"\n", 1);
-    uart_send(state->uart_context, buf + start, payload_len);
+    size_t remaining = payload_len;
+    while(remaining > 0) {
+        size_t to_read = (remaining > chunk) ? chunk : remaining;
+        uint16_t read = storage_file_read(file, buf, (uint16_t)to_read);
+        if(read == 0) break;
+        uart_send(state->uart_context, buf, read);
+        remaining -= read;
+    }
     uart_send(state->uart_context, (const uint8_t*)ir_close_marker, 10);
     uart_send(state->uart_context, (const uint8_t*)"\n", 1);
 
     handle_ir_command_feedback_ex(state, "ir inline", false, false);
+
+    storage_file_close(file);
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
 }
 
 static void send_evil_portal_html(AppState* state) {
@@ -2306,6 +2706,9 @@ static void send_evil_portal_html(AppState* state) {
 
             free(the_html);
         }
+    } else {
+        // Only free if read failed but buffer was allocated (unlikely but safe)
+        if(the_html) free(the_html);
     }
 }
 
@@ -2315,6 +2718,10 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
         return;
     }
     if(strcmp(command->command, "send_ir_file") == 0) {
+        // Ensure capture streams are cleaned up before opening file browser
+        if(state->uart_context) {
+            uart_cleanup_capture_streams(state->uart_context);
+        }
         send_ir_file(state);
         return;
     }
@@ -2329,8 +2736,8 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
         confirmation_view_set_ok_callback(state->confirmation_view, error_callback, state);
         confirmation_view_set_cancel_callback(state->confirmation_view, error_callback, state);
 
-        view_dispatcher_switch_to_view(state->view_dispatcher, 7);
-        state->current_view = 7;
+        view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_CONFIRMATION);
+        state->current_view = VIEW_CONFIRMATION;
         return;
     }
 
@@ -2358,8 +2765,8 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
 #ifdef HAS_MOMENTUM_SUPPORT
         text_input_show_illegal_symbols(state->text_input, true);
 #endif
-        view_dispatcher_switch_to_view(state->view_dispatcher, 6);
-        state->current_view = 6;
+        view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_TEXT_INPUT);
+        state->current_view = VIEW_TEXT_INPUT;
         return;
     }
 
@@ -2380,8 +2787,8 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
 #ifdef HAS_MOMENTUM_SUPPORT
         text_input_show_illegal_symbols(state->text_input, true);
 #endif
-        view_dispatcher_switch_to_view(state->view_dispatcher, 6);
-        state->current_view = 6;
+        view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_TEXT_INPUT);
+        state->current_view = VIEW_TEXT_INPUT;
         return;
     }
 
@@ -2390,6 +2797,7 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
         MenuCommandContext* cmd_ctx = malloc(sizeof(MenuCommandContext));
         cmd_ctx->state = state;
         cmd_ctx->command = command;
+        state->active_confirm_context = cmd_ctx;
         confirmation_view_set_header(state->confirmation_view, command->confirm_header);
         confirmation_view_set_text(state->confirmation_view, command->confirm_text);
         confirmation_view_set_ok_callback(
@@ -2397,12 +2805,13 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
         confirmation_view_set_cancel_callback(
             state->confirmation_view, confirmation_cancel_callback, cmd_ctx);
 
-        view_dispatcher_switch_to_view(state->view_dispatcher, 7);
+        view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_CONFIRMATION);
+        state->current_view = VIEW_CONFIRMATION;
         return;
     }
 
     // Handle variable sniff command
-    if(state->current_view == 11 && state->current_index == 0) {
+    if(state->current_view == VIEW_WIFI_CAPTURE && state->current_index == 0) {
         const SniffCommandDef* current_sniff = &sniff_commands[current_sniff_index];
         // Handle capture commands
         if(current_sniff->capture_prefix) {
@@ -2423,14 +2832,14 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
 
             furi_delay_ms(10);
             send_uart_command(current_sniff->command, state);
-            state->current_view = 5;
+            state->current_view = VIEW_TEXT_BOX;
             return;
         }
 
         // Save view and show terminal log
         state->previous_view = state->current_view;
         uart_receive_data(state->uart_context, state->view_dispatcher, state, "", "", "");
-        state->current_view = 5;
+        state->current_view = VIEW_TEXT_BOX;
 
         furi_delay_ms(5);
         send_uart_command(current_sniff->command, state);
@@ -2438,7 +2847,7 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
     }
 
     // Handle variable beacon spam command
-    if(state->current_view == 12 && state->current_index == 0) {
+    if(state->current_view == VIEW_WIFI_ATTACK && state->current_index == 0) {
         const CyclingMenuDef* current_beacon = &beacon_spam_commands[current_beacon_index];
 
         // If it's custom mode (last index), handle text input
@@ -2458,51 +2867,51 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
 #ifdef HAS_MOMENTUM_SUPPORT
             text_input_show_illegal_symbols(state->text_input, true);
 #endif
-            view_dispatcher_switch_to_view(state->view_dispatcher, 6);
-            state->current_view = 6;
+            view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_TEXT_INPUT);
+            state->current_view = VIEW_TEXT_INPUT;
             return;
         }
 
         // Save view and show terminal log
         state->previous_view = state->current_view;
         uart_receive_data(state->uart_context, state->view_dispatcher, state, "", "", "");
-        state->current_view = 5;
+        state->current_view = VIEW_TEXT_BOX;
         furi_delay_ms(5);
         send_uart_command(current_beacon->command, state);
         return;
     }
 
     // Handle variable rgbmode command (new branch for index 17)
-    if(state->current_view == 14 && state->current_index == 0) {
+    if(state->current_view == VIEW_WIFI_SETTINGS && state->current_index == 0) {
         const CyclingMenuDef* current_rgb = &rgbmode_commands[current_rgb_index];
         // Save view and show terminal log
         state->previous_view = state->current_view;
         uart_receive_data(state->uart_context, state->view_dispatcher, state, "", "", "");
-        state->current_view = 5;
+        state->current_view = VIEW_TEXT_BOX;
         furi_delay_ms(5);
         send_uart_command(current_rgb->command, state);
         return;
     }
 
     // Handle variable WiFi scan command (scan modes like APs / APs Live / Stations / All)
-    if(state->current_view == 10 && state->current_index == 0) {
+    if(state->current_view == VIEW_WIFI_SCANNING && state->current_index == 0) {
         const CyclingMenuDef* current_scan = &wifi_scan_modes[current_wifi_scan_index];
         // Save view and show terminal log
         state->previous_view = state->current_view;
         uart_receive_data(state->uart_context, state->view_dispatcher, state, "", "", "");
-        state->current_view = 5;
+        state->current_view = VIEW_TEXT_BOX;
         furi_delay_ms(5);
         send_uart_command(current_scan->command, state);
         return;
     }
 
     // Handle variable BLE spam command
-    if(state->current_view == 22 && state->current_index == 0) {
+    if(state->current_view == VIEW_BLE_ATTACK && state->current_index == 0) {
         const CyclingMenuDef* current_ble_spam = &ble_spam_commands[current_ble_spam_index];
         // Save view and show terminal log
         state->previous_view = state->current_view;
         uart_receive_data(state->uart_context, state->view_dispatcher, state, "", "", "");
-        state->current_view = 5;
+        state->current_view = VIEW_TEXT_BOX;
         furi_delay_ms(5);
         send_uart_command(current_ble_spam->command, state);
         return;
@@ -2527,7 +2936,7 @@ static void execute_menu_command(AppState* state, const MenuCommand* command) {
 
         furi_delay_ms(10);
         send_uart_command(command->command, state);
-        state->current_view = 5;
+        state->current_view = VIEW_TEXT_BOX;
         return;
     }
 
@@ -2562,47 +2971,50 @@ static void show_menu(
     // Restore last selection based on menu type
     uint32_t last_index = 0;
     switch(view_id) {
-    case 1: // WiFi categories
+    case VIEW_WIFI: // WiFi categories
         last_index = state->last_wifi_category_index;
         break;
-    case 10: // WiFi Scanning
+    case VIEW_WIFI_SCANNING: // WiFi Scanning
         last_index = state->last_wifi_scanning_index;
         break;
-    case 11: // WiFi Capture
+    case VIEW_WIFI_CAPTURE: // WiFi Capture
         last_index = state->last_wifi_capture_index;
         break;
-    case 12: // WiFi Attack
+    case VIEW_WIFI_ATTACK: // WiFi Attack
         last_index = state->last_wifi_attack_index;
         break;
-    case 13: // WiFi Network
+    case VIEW_WIFI_NETWORK: // WiFi Network
         last_index = state->last_wifi_network_index;
         break;
-    case 14: // WiFi Settings
+    case VIEW_WIFI_SETTINGS: // WiFi Settings
         last_index = state->last_wifi_settings_index;
         break;
-    case 2: // BLE categories
+    case VIEW_BLE: // BLE categories
         last_index = state->last_ble_category_index;
         break;
-    case 20: // BLE Scanning
+    case VIEW_BLE_SCANNING: // BLE Scanning
         last_index = state->last_ble_scanning_index;
         break;
-    case 21: // BLE Capture
+    case VIEW_BLE_CAPTURE: // BLE Capture
         last_index = state->last_ble_capture_index;
         break;
-    case 22: // BLE Attack
+    case VIEW_BLE_ATTACK: // BLE Attack
         last_index = state->last_ble_attack_index;
         break;
-    case 3: // GPS
+    case VIEW_GPS: // GPS
         last_index = state->last_gps_index;
+        break;
+    case VIEW_AERIAL: // Aerial
+        last_index = state->last_aerial_category_index;
         break;
     }
     if(last_index < command_count) {
         submenu_set_selected_item(menu, last_index);
     }
 
+    state->previous_view = state->current_view;
     view_dispatcher_switch_to_view(state->view_dispatcher, view_id);
     state->current_view = view_id;
-    state->previous_view = view_id;
 }
 
 // Menu display functions
@@ -2728,12 +3140,23 @@ void show_wifi_menu(AppState* state) {
     submenu_add_item(state->wifi_menu, "Packet Capture > ", 1, submenu_callback, state);
     submenu_add_item(state->wifi_menu, "Attacks > ", 2, submenu_callback, state);
     submenu_add_item(state->wifi_menu, "Evil Portal & Network >", 3, submenu_callback, state);
-    submenu_add_item(state->wifi_menu, wifi_stop_command.label, 4, submenu_callback, state);
+    submenu_add_item(state->wifi_menu, "Aerial Detector >", 4, submenu_callback, state);
+    submenu_add_item(state->wifi_menu, wifi_stop_command.label, 5, submenu_callback, state);
     // Restore last selected WiFi category
     submenu_set_selected_item(state->wifi_menu, state->last_wifi_category_index);
 
-    view_dispatcher_switch_to_view(state->view_dispatcher, 1);
-    state->current_view = 1;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_WIFI);
+    state->current_view = VIEW_WIFI;
+}
+
+void show_aerial_menu(AppState* state) {
+    show_menu(
+        state,
+        aerial_commands,
+        COUNT_OF(aerial_commands),
+        "Aerial Detector:",
+        state->aerial_menu,
+        15);
 }
 
 void show_ble_menu(AppState* state) {
@@ -2746,8 +3169,8 @@ void show_ble_menu(AppState* state) {
     // Restore last selected BLE category
     submenu_set_selected_item(state->ble_menu, state->last_ble_category_index);
 
-    view_dispatcher_switch_to_view(state->view_dispatcher, 2);
-    state->current_view = 2;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_BLE);
+    state->current_view = VIEW_BLE;
 }
 
 void show_gps_menu(AppState* state) {
@@ -2764,31 +3187,31 @@ void handle_wifi_menu(AppState* state, uint32_t index) {
     // This function is now for sub-category menus
     const MenuCommand* command = NULL;
     switch(state->current_view) {
-    case 10: // Scanning
+    case VIEW_WIFI_SCANNING: // Scanning
         if(index < COUNT_OF(wifi_scanning_commands)) {
             command = &wifi_scanning_commands[index];
             state->last_wifi_scanning_index = index;
         }
         break;
-    case 11: // Capture
+    case VIEW_WIFI_CAPTURE: // Capture
         if(index < COUNT_OF(wifi_capture_commands)) {
             command = &wifi_capture_commands[index];
             state->last_wifi_capture_index = index;
         }
         break;
-    case 12: // Attack
+    case VIEW_WIFI_ATTACK: // Attack
         if(index < COUNT_OF(wifi_attack_commands)) {
             command = &wifi_attack_commands[index];
             state->last_wifi_attack_index = index;
         }
         break;
-    case 13: // Network
+    case VIEW_WIFI_NETWORK: // Network
         if(index < COUNT_OF(wifi_network_commands)) {
             command = &wifi_network_commands[index];
             state->last_wifi_network_index = index;
         }
         break;
-    case 14: // Settings
+    case VIEW_WIFI_SETTINGS: // Settings
         if(index < COUNT_OF(wifi_settings_commands)) {
             command = &wifi_settings_commands[index];
             state->last_wifi_settings_index = index;
@@ -2805,19 +3228,19 @@ void handle_ble_menu(AppState* state, uint32_t index) {
     // This function is now for sub-category menus
     const MenuCommand* command = NULL;
     switch(state->current_view) {
-    case 20: // Scanning
+    case VIEW_BLE_SCANNING: // Scanning
         if(index < COUNT_OF(ble_scanning_commands)) {
             command = &ble_scanning_commands[index];
             state->last_ble_scanning_index = index;
         }
         break;
-    case 21: // Capture
+    case VIEW_BLE_CAPTURE: // Capture
         if(index < COUNT_OF(ble_capture_commands)) {
             command = &ble_capture_commands[index];
             state->last_ble_capture_index = index;
         }
         break;
-    case 22: // Attack
+    case VIEW_BLE_ATTACK: // Attack
         if(index < COUNT_OF(ble_attack_commands)) {
             command = &ble_attack_commands[index];
             state->last_ble_attack_index = index;
@@ -2827,6 +3250,13 @@ void handle_ble_menu(AppState* state, uint32_t index) {
 
     if(command) {
         execute_menu_command(state, command);
+    }
+}
+
+void handle_aerial_menu(AppState* state, uint32_t index) {
+    if(index < COUNT_OF(aerial_commands)) {
+        state->last_aerial_category_index = index;
+        execute_menu_command(state, &aerial_commands[index]);
     }
 }
 
@@ -2868,7 +3298,7 @@ void submenu_callback(void* context, uint32_t index) {
     state->current_index = index; // Track current selection
 
     switch(state->current_view) {
-    case 0:
+    case VIEW_MAIN:
         switch(index) {
         case 0:
             show_wifi_menu(state);
@@ -2885,13 +3315,12 @@ void submenu_callback(void* context, uint32_t index) {
             show_ir_menu(state);
             break;
         case 4:
-            view_dispatcher_switch_to_view(state->view_dispatcher, 8);
-            state->current_view = 8;
+            view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_SETTINGS_ACTIONS);
+            state->current_view = VIEW_SETTINGS_ACTIONS;
             break;
         }
         break;
-    case 1:
-        // Save which WiFi category was selected
+    case VIEW_WIFI:
         state->last_wifi_category_index = index;
         switch(index) {
         case 0:
@@ -2907,12 +3336,15 @@ void submenu_callback(void* context, uint32_t index) {
             show_wifi_network_menu(state);
             break;
         case 4:
+            show_aerial_menu(state);
+            state->last_aerial_category_index = 0;
+            break;
+        case 5:
             execute_menu_command(state, &wifi_stop_command);
             break;
         }
         break;
-    case 2:
-        // Save which BLE category was selected
+    case VIEW_BLE:
         state->last_ble_category_index = index;
         switch(index) {
         case 0:
@@ -2929,15 +3361,18 @@ void submenu_callback(void* context, uint32_t index) {
             break;
         }
         break;
-    case 3:
+    case VIEW_GPS:
         handle_gps_menu(state, index);
         break;
-    case 20:
-    case 21:
-    case 22:
+    case VIEW_BLE_SCANNING:
+    case VIEW_BLE_CAPTURE:
+    case VIEW_BLE_ATTACK:
         handle_ble_menu(state, index);
         break;
-    case 31:
+    case VIEW_AERIAL:
+        handle_aerial_menu(state, index);
+        break;
+    case VIEW_IR_REMOTES:
         if(index < state->ir_remote_count) {
             state->ir_universal_buttons_mode = false;
             state->ir_file_buttons_mode = false;
@@ -2949,7 +3384,7 @@ void submenu_callback(void* context, uint32_t index) {
             }
         }
         break;
-    case 32:
+    case VIEW_IR_BUTTONS:
         if(index < state->ir_signal_count) {
             if(state->ir_file_buttons_mode) {
                 ir_send_button_from_file(state, index);
@@ -2977,7 +3412,7 @@ void submenu_callback(void* context, uint32_t index) {
             }
         }
         break;
-    case 33:
+    case VIEW_IR_UNIVERSALS:
         if(index < state->ir_universal_count) {
             IrUniversalEntry* uni = &state->ir_universals[index];
             strncpy(
@@ -2994,7 +3429,7 @@ void submenu_callback(void* context, uint32_t index) {
             }
         }
         break;
-    case 30:
+    case VIEW_IR:
         handle_ir_menu(state, index);
         break;
     }
@@ -3042,129 +3477,45 @@ static void show_menu_help(void* context, uint32_t index) {
     confirmation_view_set_cancel_callback(state->confirmation_view, app_info_ok_callback, state);
 
     // Switch to confirmation view to display help
-    view_dispatcher_switch_to_view(state->view_dispatcher, 7);
-    state->current_view = 7;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_CONFIRMATION);
+    state->current_view = VIEW_CONFIRMATION;
 }
 
 bool back_event_callback(void* context) {
     AppState* state = (AppState*)context;
     if(!state) return false;
 
-    uint32_t current_view = state->current_view;
+    uint8_t cv = state->current_view;
 
-    // Allow confirmation view to handle its own back button
-    if(current_view == 7) {
-        return false;
-    }
+    if(cv == VIEW_CONFIRMATION) return false;
 
-    // Handle text box view (view 5)
-    if(current_view == 5) {
-        // send stop on exit if enabled
+    if(cv == VIEW_TEXT_BOX) {
         if(state->settings.stop_on_back_index) {
             send_uart_command(wifi_stop_command.command, state);
         }
-        FURI_LOG_D("Ghost ESP", "Handling text box view exit");
-
-        // Cleanup text buffer
-        if(state->textBoxBuffer) {
-            state->textBoxBuffer[0] = '\0';
-            state->buffer_length = 0;
+        if(state->uart_context) {
+            uart_reset_text_buffers(state->uart_context);
+            uart_cleanup_capture_streams(state->uart_context);
         }
-
-        // Return to previous menu with selection restored
-        if(state->previous_view == 8 || state->previous_view == 4) {
-            // if we came from settings or configuration view, go back there
-            view_dispatcher_switch_to_view(state->view_dispatcher, state->previous_view);
-            state->current_view = state->previous_view;
-        } else {
-            switch(state->previous_view) {
-            case 1:
-                show_wifi_menu(state);
-                submenu_set_selected_item(state->wifi_menu, state->last_wifi_category_index);
-                break;
-            case 10:
-                show_wifi_scanning_menu(state);
-                submenu_set_selected_item(
-                    state->wifi_scanning_menu, state->last_wifi_scanning_index);
-                break;
-            case 11:
-                show_wifi_capture_menu(state);
-                submenu_set_selected_item(
-                    state->wifi_capture_menu, state->last_wifi_capture_index);
-                break;
-            case 12:
-                show_wifi_attack_menu(state);
-                submenu_set_selected_item(state->wifi_attack_menu, state->last_wifi_attack_index);
-                break;
-            case 13:
-                show_wifi_network_menu(state);
-                submenu_set_selected_item(
-                    state->wifi_network_menu, state->last_wifi_network_index);
-                break;
-            case 14:
-                show_wifi_settings_menu(state);
-                submenu_set_selected_item(
-                    state->wifi_settings_menu, state->last_wifi_settings_index);
-                break;
-            case 2:
-                show_ble_menu(state);
-                submenu_set_selected_item(state->ble_menu, state->last_ble_category_index);
-                break;
-            case 20:
-                show_ble_scanning_menu(state);
-                submenu_set_selected_item(
-                    state->ble_scanning_menu, state->last_ble_scanning_index);
-                break;
-            case 21:
-                show_ble_capture_menu(state);
-                submenu_set_selected_item(state->ble_capture_menu, state->last_ble_capture_index);
-                break;
-            case 22:
-                show_ble_attack_menu(state);
-                submenu_set_selected_item(state->ble_attack_menu, state->last_ble_attack_index);
-                break;
-            case 3:
-                show_gps_menu(state);
-                submenu_set_selected_item(state->gps_menu, state->last_gps_index);
-                break;
-            case 30:
-                show_ir_menu(state);
-                submenu_set_selected_item(state->ir_menu, state->last_ir_index);
-                break;
-            case 31:
-                ir_show_remotes_menu(state);
-                break;
-            case 32:
-                ir_show_buttons_menu(state);
-                break;
-            case 33:
-                ir_show_universals_menu(state);
-                break;
-            default:
-                show_main_menu(state);
-                break;
-            }
+        if(state->textBoxBuffer) state->buffer_length = 0;
+        navigate_to_view(state, state->previous_view);
+    } else if(cv == VIEW_TEXT_INPUT) {
+        if(state->settings.stop_on_back_index) {
+            send_uart_command(wifi_stop_command.command, state);
         }
-        // do not overwrite previous_view here to preserve original navigation
-        // context
-    }
-    // Handle settings menu (view 8)
-    else if(current_view == 8) {
-        show_main_menu(state);
-        state->current_view = 0;
-    }
-    // Handle settings submenu (view 4)
-    else if(current_view == 4) {
-        view_dispatcher_switch_to_view(state->view_dispatcher, 8);
-        state->current_view = 8;
-    }
-    // Handle submenu views (1-3)
-    else if(current_view >= 1 && current_view <= 3) {
-        show_main_menu(state);
-        state->current_view = 0;
-    }
-    // Handle IR submenus (31-33)
-    else if(current_view >= 31 && current_view <= 33) {
+        state->uart_command = NULL;
+        state->connect_input_stage = 0;
+        state->connect_ssid[0] = '\0';
+        if(state->text_input) text_input_reset(state->text_input);
+        if(state->input_buffer) memset(state->input_buffer, 0, INPUT_BUFFER_SIZE);
+        navigate_to_view(state, state->previous_view);
+    } else if(cv == VIEW_SETTINGS_ACTIONS) {
+        navigate_to_view(state, VIEW_MAIN);
+    } else if(cv == VIEW_SETTINGS_CONFIG) {
+        navigate_to_view(state, VIEW_SETTINGS_ACTIONS);
+    } else if(cv >= VIEW_WIFI && cv <= VIEW_GPS) {
+        navigate_to_view(state, VIEW_MAIN);
+    } else if(cv >= VIEW_IR_REMOTES && cv <= VIEW_IR_UNIVERSALS) {
         if(state->ir_file_buffer) {
             free(state->ir_file_buffer);
             state->ir_file_buffer = NULL;
@@ -3172,111 +3523,20 @@ bool back_event_callback(void* context) {
         }
         state->ir_file_buttons_mode = false;
         state->ir_universal_buttons_mode = false;
-
-        show_ir_menu(state);
-        submenu_set_selected_item(state->ir_menu, state->last_ir_index);
-        state->current_view = 30;
-    }
-    // Handle IR menu (view 30)
-    else if(current_view == 30) {
-        show_main_menu(state);
-        state->current_view = 0;
-    }
-    // Handle WiFi sub-category menus
-    else if(current_view >= 10 && current_view <= 14) {
-        if(state->came_from_settings) {
-            // came from settings hardware menu; return to settings actions
-            view_dispatcher_switch_to_view(state->view_dispatcher, 8);
-            state->current_view = 8;
+        navigate_to_view(state, VIEW_IR);
+    } else if(cv == VIEW_IR) {
+        navigate_to_view(state, VIEW_MAIN);
+    } else if(cv >= VIEW_WIFI_SCANNING && cv <= VIEW_AERIAL) {
+        if(state->came_from_settings && cv >= VIEW_WIFI_SCANNING && cv <= VIEW_WIFI_SETTINGS) {
+            navigate_to_view(state, VIEW_SETTINGS_ACTIONS);
         } else {
-            show_wifi_menu(state);
-            submenu_set_selected_item(state->wifi_menu, state->last_wifi_category_index);
-            state->current_view = 1;
+            navigate_to_view(state, VIEW_WIFI);
         }
-    }
-    // Handle Status Idle submenu (view 40)
-    else if(current_view == 40) {
-        view_dispatcher_switch_to_view(state->view_dispatcher, 8);
-        state->current_view = 8;
-    }
-    // Handle BLE sub-category menus
-    else if(current_view >= 20 && current_view <= 22) {
-        show_ble_menu(state);
-        submenu_set_selected_item(state->ble_menu, state->last_ble_category_index);
-        state->current_view = 2;
-    }
-    // Handle text input view (view 6)
-    else if(current_view == 6) {
-        // send stop on exit if enabled
-        if(state->settings.stop_on_back_index) {
-            send_uart_command(wifi_stop_command.command, state);
-        }
-        // Clear any command setup state
-        state->uart_command = NULL;
-        state->connect_input_stage = 0;
-        state->connect_ssid[0] = '\0';
-        if(state->text_input) text_input_reset(state->text_input);
-        if(state->input_buffer) memset(state->input_buffer, 0, INPUT_BUFFER_SIZE);
-
-        switch(state->previous_view) {
-        case 1:
-            show_wifi_menu(state);
-            submenu_set_selected_item(state->wifi_menu, state->last_wifi_category_index);
-            break;
-        case 10:
-            show_wifi_scanning_menu(state);
-            submenu_set_selected_item(state->wifi_scanning_menu, state->last_wifi_scanning_index);
-            break;
-        case 11:
-            show_wifi_capture_menu(state);
-            submenu_set_selected_item(state->wifi_capture_menu, state->last_wifi_capture_index);
-            break;
-        case 12:
-            show_wifi_attack_menu(state);
-            submenu_set_selected_item(state->wifi_attack_menu, state->last_wifi_attack_index);
-            break;
-        case 13:
-            show_wifi_network_menu(state);
-            submenu_set_selected_item(state->wifi_network_menu, state->last_wifi_network_index);
-            break;
-        case 14:
-            show_wifi_settings_menu(state);
-            submenu_set_selected_item(state->wifi_settings_menu, state->last_wifi_settings_index);
-            break;
-        case 2:
-            show_ble_menu(state);
-            submenu_set_selected_item(state->ble_menu, state->last_ble_category_index);
-            break;
-        case 20:
-            show_ble_scanning_menu(state);
-            submenu_set_selected_item(state->ble_scanning_menu, state->last_ble_scanning_index);
-            break;
-        case 21:
-            show_ble_capture_menu(state);
-            submenu_set_selected_item(state->ble_capture_menu, state->last_ble_capture_index);
-            break;
-        case 22:
-            show_ble_attack_menu(state);
-            submenu_set_selected_item(state->ble_attack_menu, state->last_ble_attack_index);
-            break;
-        case 3:
-            show_gps_menu(state);
-            submenu_set_selected_item(state->gps_menu, state->last_gps_index);
-            break;
-        case 30:
-            show_ir_menu(state);
-            submenu_set_selected_item(state->ir_menu, state->last_ir_index);
-            break;
-        default:
-            show_main_menu(state);
-            break;
-        }
-
-        // do not overwrite previous_view here to preserve original navigation
-        // context
-    }
-    // Handle main menu (view 0)
-    else if(current_view == 0) {
+    } else if(cv == VIEW_STATUS_IDLE) {
+        navigate_to_view(state, VIEW_SETTINGS_ACTIONS);
+    } else if(cv >= VIEW_BLE_SCANNING && cv <= VIEW_BLE_ATTACK) {
+        navigate_to_view(state, VIEW_BLE);
+    } else if(cv == VIEW_MAIN) {
         view_dispatcher_stop(state->view_dispatcher);
     }
 
@@ -3296,8 +3556,8 @@ void show_main_menu(AppState* state) {
     main_menu_set_help_callback(state->main_menu, show_menu_help, state);
 
     state->came_from_settings = false;
-    view_dispatcher_switch_to_view(state->view_dispatcher, 0);
-    state->current_view = 0;
+    view_dispatcher_switch_to_view(state->view_dispatcher, VIEW_MAIN);
+    state->current_view = VIEW_MAIN;
 }
 
 bool text_view_input_handler(InputEvent* event, void* context) {
@@ -3362,65 +3622,68 @@ static bool menu_input_handler(InputEvent* event, void* context) {
 
     // Determine current menu context
     switch(state->current_view) {
-    case 1:
+    case VIEW_WIFI:
         current_menu = state->wifi_menu;
-        // No commands here, just categories
         return false;
-    case 2:
+    case VIEW_BLE:
         current_menu = state->ble_menu;
-        // No commands here, just categories
         return false;
-    case 20:
+    case VIEW_BLE_SCANNING:
         current_menu = state->ble_scanning_menu;
         commands = ble_scanning_commands;
         commands_count = COUNT_OF(ble_scanning_commands);
         break;
-    case 21:
+    case VIEW_BLE_CAPTURE:
         current_menu = state->ble_capture_menu;
         commands = ble_capture_commands;
         commands_count = COUNT_OF(ble_capture_commands);
         break;
-    case 22:
+    case VIEW_BLE_ATTACK:
         current_menu = state->ble_attack_menu;
         commands = ble_attack_commands;
         commands_count = COUNT_OF(ble_attack_commands);
         break;
-    case 3:
+    case VIEW_GPS:
         current_menu = state->gps_menu;
         commands = gps_commands;
         commands_count = COUNT_OF(gps_commands);
         break;
-    case 30:
+    case VIEW_IR:
         current_menu = state->ir_menu;
         commands = ir_commands;
         commands_count = COUNT_OF(ir_commands);
         break;
-    case 10:
+    case VIEW_WIFI_SCANNING:
         current_menu = state->wifi_scanning_menu;
         commands = wifi_scanning_commands;
         commands_count = COUNT_OF(wifi_scanning_commands);
         break;
-    case 11:
+    case VIEW_WIFI_CAPTURE:
         current_menu = state->wifi_capture_menu;
         commands = wifi_capture_commands;
         commands_count = COUNT_OF(wifi_capture_commands);
         break;
-    case 12:
+    case VIEW_WIFI_ATTACK:
         current_menu = state->wifi_attack_menu;
         commands = wifi_attack_commands;
         commands_count = COUNT_OF(wifi_attack_commands);
         break;
-    case 13:
+    case VIEW_WIFI_NETWORK:
         current_menu = state->wifi_network_menu;
         commands = wifi_network_commands;
         commands_count = COUNT_OF(wifi_network_commands);
         break;
-    case 14:
+    case VIEW_WIFI_SETTINGS:
         current_menu = state->wifi_settings_menu;
         commands = wifi_settings_commands;
         commands_count = COUNT_OF(wifi_settings_commands);
         break;
-    case 40:
+    case VIEW_AERIAL:
+        current_menu = state->aerial_menu;
+        commands = aerial_commands;
+        commands_count = COUNT_OF(aerial_commands);
+        break;
+    case VIEW_STATUS_IDLE:
         current_menu = state->status_idle_menu;
         commands = status_idle_commands;
         commands_count = COUNT_OF(status_idle_commands);
@@ -3458,43 +3721,48 @@ static bool menu_input_handler(InputEvent* event, void* context) {
 
         case InputKeyOk:
             if(current_index < commands_count) {
-                if(state->current_view == 30) {
+                if(state->current_view == VIEW_IR) {
                     submenu_callback(state, current_index);
                 } else {
                     state->current_index = current_index;
                     // Save last selection for proper restore on exit
-                    if(state->current_view >= 10 && state->current_view <= 14) {
+                    if(state->current_view >= VIEW_WIFI_SCANNING &&
+                       state->current_view <= VIEW_WIFI_SETTINGS) {
                         switch(state->current_view) {
-                        case 10:
+                        case VIEW_WIFI_SCANNING:
                             state->last_wifi_scanning_index = current_index;
                             break;
-                        case 11:
+                        case VIEW_WIFI_CAPTURE:
                             state->last_wifi_capture_index = current_index;
                             break;
-                        case 12:
+                        case VIEW_WIFI_ATTACK:
                             state->last_wifi_attack_index = current_index;
                             break;
-                        case 13:
+                        case VIEW_WIFI_NETWORK:
                             state->last_wifi_network_index = current_index;
                             break;
-                        case 14:
+                        case VIEW_WIFI_SETTINGS:
                             state->last_wifi_settings_index = current_index;
                             break;
                         }
-                    } else if(state->current_view >= 20 && state->current_view <= 22) {
+                    } else if(
+                        state->current_view >= VIEW_BLE_SCANNING &&
+                        state->current_view <= VIEW_BLE_ATTACK) {
                         switch(state->current_view) {
-                        case 20:
+                        case VIEW_BLE_SCANNING:
                             state->last_ble_scanning_index = current_index;
                             break;
-                        case 21:
+                        case VIEW_BLE_CAPTURE:
                             state->last_ble_capture_index = current_index;
                             break;
-                        case 22:
+                        case VIEW_BLE_ATTACK:
                             state->last_ble_attack_index = current_index;
                             break;
                         }
-                    } else if(state->current_view == 3) {
+                    } else if(state->current_view == VIEW_GPS) {
                         state->last_gps_index = current_index;
+                    } else if(state->current_view == VIEW_AERIAL) {
+                        state->last_aerial_category_index = current_index;
                     }
                     execute_menu_command(state, &commands[current_index]);
                 }
@@ -3503,33 +3771,22 @@ static bool menu_input_handler(InputEvent* event, void* context) {
             break;
 
         case InputKeyBack:
-            if(state->current_view == 40) {
-                view_dispatcher_switch_to_view(state->view_dispatcher, 8);
-                state->current_view = 8;
-            }
-            // Back from WiFi subcategory menus returns to WiFi categories (or settings)
-            else if(state->current_view >= 10 && state->current_view <= 14) {
-                if(state->came_from_settings) {
-                    // came from settings hardware menu; return to settings actions
-                    view_dispatcher_switch_to_view(state->view_dispatcher, 8);
-                    state->current_view = 8;
+            if(state->current_view == VIEW_STATUS_IDLE) {
+                navigate_to_view(state, VIEW_SETTINGS_ACTIONS);
+            } else if(state->current_view >= VIEW_WIFI_SCANNING && state->current_view <= VIEW_AERIAL) {
+                if(state->came_from_settings && state->current_view <= VIEW_WIFI_SETTINGS) {
+                    navigate_to_view(state, VIEW_SETTINGS_ACTIONS);
                 } else {
-                    show_wifi_menu(state);
-                    submenu_set_selected_item(state->wifi_menu, state->last_wifi_category_index);
-                    state->current_view = 1;
+                    navigate_to_view(state, VIEW_WIFI);
                 }
-            }
-            // Back from BLE subcategory menus returns to BLE categories
-            else if(state->current_view >= 20 && state->current_view <= 22) {
-                show_ble_menu(state);
-                submenu_set_selected_item(state->ble_menu, state->last_ble_category_index);
-                state->current_view = 2;
             } else if(
-                (state->current_view >= 1 && state->current_view <= 3) ||
-                state->current_view == 30) {
-                // Back from a top-level menu returns to main menu
-                show_main_menu(state);
-                state->current_view = 0;
+                state->current_view >= VIEW_BLE_SCANNING &&
+                state->current_view <= VIEW_BLE_ATTACK) {
+                navigate_to_view(state, VIEW_BLE);
+            } else if(
+                (state->current_view >= VIEW_WIFI && state->current_view <= VIEW_GPS) ||
+                state->current_view == VIEW_IR) {
+                navigate_to_view(state, VIEW_MAIN);
             }
             consumed = true;
             break;
@@ -3537,7 +3794,7 @@ static bool menu_input_handler(InputEvent* event, void* context) {
         case InputKeyRight:
         case InputKeyLeft:
             // Handle sniff command cycling
-            if(state->current_view == 11 && current_index == 0) {
+            if(state->current_view == VIEW_WIFI_CAPTURE && current_index == 0) {
                 // sniff_commands is not CyclingMenuDef, so keep legacy logic for now
                 if(event->key == InputKeyRight) {
                     current_sniff_index = (current_sniff_index + 1) % COUNT_OF(sniff_commands);
@@ -3551,7 +3808,7 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                 consumed = true;
             }
             // Handle beacon spam command cycling
-            else if(state->current_view == 12 && current_index == 0) {
+            else if(state->current_view == VIEW_WIFI_ATTACK && current_index == 0) {
                 consumed = cycle_menu_item(
                     (CyclingMenuDef*)beacon_spam_commands,
                     COUNT_OF(beacon_spam_commands),
@@ -3562,7 +3819,7 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                     event);
             }
             // Handle rgbmode command cycling (new branch for index 17)
-            else if(state->current_view == 14 && current_index == 0) {
+            else if(state->current_view == VIEW_WIFI_SETTINGS && current_index == 0) {
                 consumed = cycle_menu_item(
                     (CyclingMenuDef*)rgbmode_commands,
                     COUNT_OF(rgbmode_commands),
@@ -3573,7 +3830,7 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                     event);
             }
             // Handle BLE spam command cycling
-            else if(state->current_view == 22 && current_index == 0) {
+            else if(state->current_view == VIEW_BLE_ATTACK && current_index == 0) {
                 consumed = cycle_menu_item(
                     (CyclingMenuDef*)ble_spam_commands,
                     COUNT_OF(ble_spam_commands),
@@ -3584,7 +3841,7 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                     event);
             }
             // Handle WiFi scan mode cycling
-            else if(state->current_view == 10 && current_index == 0) {
+            else if(state->current_view == VIEW_WIFI_SCANNING && current_index == 0) {
                 consumed = cycle_menu_item(
                     (CyclingMenuDef*)wifi_scan_modes,
                     COUNT_OF(wifi_scan_modes),
@@ -3595,7 +3852,7 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                     event);
             }
             // List mode cycling
-            else if(state->current_view == 10 && current_index == 1) {
+            else if(state->current_view == VIEW_WIFI_SCANNING && current_index == 1) {
                 consumed = cycle_menu_item(
                     (CyclingMenuDef*)wifi_list_modes,
                     COUNT_OF(wifi_list_modes),
@@ -3606,7 +3863,7 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                     event);
             }
             // Select mode cycling
-            else if(state->current_view == 10 && current_index == 2) {
+            else if(state->current_view == VIEW_WIFI_SCANNING && current_index == 2) {
                 consumed = cycle_menu_item(
                     (CyclingMenuDef*)wifi_select_modes,
                     COUNT_OF(wifi_select_modes),
@@ -3617,7 +3874,7 @@ static bool menu_input_handler(InputEvent* event, void* context) {
                     event);
             }
             // Handle listen mode cycling
-            else if(state->current_view == 10 && current_index == 3) {
+            else if(state->current_view == VIEW_WIFI_SCANNING && current_index == 3) {
                 consumed = cycle_menu_item(
                     (CyclingMenuDef*)wifi_listen_modes,
                     COUNT_OF(wifi_listen_modes),

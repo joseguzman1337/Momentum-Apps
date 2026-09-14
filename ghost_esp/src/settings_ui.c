@@ -12,11 +12,6 @@
 #include "utils.h"
 #include "callbacks.h"
 
-typedef struct {
-    SettingsUIContext* settings_ui_context;
-    SettingKey key;
-} VariableItemContext;
-
 #define MAX_FILENAME_LEN 256
 #define MAX_PATH_LEN     512
 
@@ -54,6 +49,11 @@ void clear_log_files(void* context) {
     // Open storage once
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* dir = storage_file_alloc(storage);
+    if(!dir) {
+        furi_record_close(RECORD_STORAGE);
+        create_new_log(app);
+        return;
+    }
 
     if(!storage_dir_open(dir, GHOST_ESP_APP_FOLDER_LOGS)) {
         FURI_LOG_E("ClearLogs", "Failed to open logs directory");
@@ -92,7 +92,11 @@ void clear_pcap_files(void* context) {
     // Close current file if open
     if(app->uart_context && app->uart_context->storageContext &&
        app->uart_context->storageContext->current_file) {
-        storage_file_close(app->uart_context->storageContext->current_file);
+        if(storage_file_is_open(app->uart_context->storageContext->current_file)) {
+            storage_file_sync(app->uart_context->storageContext->current_file);
+            storage_file_close(app->uart_context->storageContext->current_file);
+        }
+        app->uart_context->storageContext->HasOpenedFile = false;
     }
 
     // Stack allocation for better performance
@@ -104,6 +108,10 @@ void clear_pcap_files(void* context) {
     // Open storage once
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* dir = storage_file_alloc(storage);
+    if(!dir) {
+        furi_record_close(RECORD_STORAGE);
+        return;
+    }
 
     if(!storage_dir_open(dir, GHOST_ESP_APP_FOLDER_PCAPS)) {
         FURI_LOG_E("ClearPCAPs", "Failed to open pcaps directory");
@@ -142,6 +150,10 @@ void clear_wardrive_files(void* context) {
     // Open storage once
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* dir = storage_file_alloc(storage);
+    if(!dir) {
+        furi_record_close(RECORD_STORAGE);
+        return;
+    }
 
     if(!storage_dir_open(dir, GHOST_ESP_APP_FOLDER_WARDRIVE)) {
         FURI_LOG_E("ClearWardrive", "Failed to open wardrive directory");
@@ -216,9 +228,7 @@ bool settings_set(Settings* settings, SettingKey key, uint8_t value, void* conte
                 SettingsUIContext* settings_context = (SettingsUIContext*)context;
                 if(settings_context->context) {
                     AppState* app_state = (AppState*)settings_context->context;
-                    if(app_state->filter_config) {
-                        app_state->filter_config->enabled = value;
-                    }
+                    app_state->filter_config.enabled = value;
                 }
             }
             changed = true;
@@ -400,8 +410,8 @@ static void settings_item_change_callback(VariableItem* item) {
 static void settings_menu_callback(void* context, uint32_t index) {
     UNUSED(index);
     AppState* app_state = context;
-    view_dispatcher_switch_to_view(app_state->view_dispatcher, 4); // Switch to settings view
-    app_state->current_view = 4;
+    view_dispatcher_switch_to_view(app_state->view_dispatcher, VIEW_SETTINGS);
+    app_state->current_view = VIEW_SETTINGS;
 }
 
 static void settings_action_callback(void* context, uint32_t index) {
@@ -478,11 +488,8 @@ void settings_setup_gui(VariableItemList* list, SettingsUIContext* context) {
             FURI_LOG_D("SettingsSetup", "Added action button: %s", metadata->name);
         } else {
             // Handle regular settings
-            VariableItemContext* item_context = malloc(sizeof(VariableItemContext));
-            if(!item_context) {
-                FURI_LOG_E("SettingsSetup", "Failed to allocate memory for item context");
-                continue;
-            }
+            // Use statically allocated context from SettingsUIContext
+            VariableItemContext* item_context = &context->item_contexts[key];
             item_context->settings_ui_context = context;
             item_context->key = key;
 
@@ -569,15 +576,16 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
         SettingsConfirmContext* confirm_ctx = malloc(sizeof(SettingsConfirmContext));
         if(!confirm_ctx) return false;
         confirm_ctx->state = app_state;
+        app_state->active_confirm_context = confirm_ctx;
 
         const char* info_text = "Created by: Spooky\n"
                                 "Updated by:\n"
                                 "@jaylikesbunda\n"
                                 "@tototo31\n"
                                 "Built with <3\n"
-                                "github.com/jaylikesbunda/ghost_esp\n\n";
+                                "GhostESP-Revival/GhostESP-FlipperCompanion\n\n";
 
-        confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.6");
+        confirmation_view_set_header(app_state->confirmation_view, "Ghost ESP v1.7.0");
         confirmation_view_set_text(app_state->confirmation_view, info_text);
 
         // Save current view before switching
@@ -588,15 +596,14 @@ bool settings_custom_event_callback(void* context, uint32_t event_id) {
         confirmation_view_set_cancel_callback(
             app_state->confirmation_view, app_info_cancel_callback, confirm_ctx);
 
-        view_dispatcher_switch_to_view(app_state->view_dispatcher, 7);
-        app_state->current_view = 7;
-        break;
+        view_dispatcher_switch_to_view(app_state->view_dispatcher, VIEW_CONFIRMATION);
+        app_state->current_view = VIEW_CONFIRMATION;
+        return true;
     }
 
     default:
         return false;
     }
-    return false;
 }
 
 // 6675636B796F7564656B69

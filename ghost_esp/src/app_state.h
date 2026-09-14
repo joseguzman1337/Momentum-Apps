@@ -14,6 +14,33 @@
 
 #define INPUT_BUFFER_SIZE 128
 
+typedef enum {
+    VIEW_MAIN = 0,
+    VIEW_WIFI = 1,
+    VIEW_BLE = 2,
+    VIEW_GPS = 3,
+    VIEW_SETTINGS_CONFIG = 4,
+    VIEW_SETTINGS = VIEW_SETTINGS_CONFIG,
+    VIEW_TEXT_BOX = 5,
+    VIEW_TEXT_INPUT = 6,
+    VIEW_CONFIRMATION = 7,
+    VIEW_SETTINGS_ACTIONS = 8,
+    VIEW_WIFI_SCANNING = 10,
+    VIEW_WIFI_CAPTURE = 11,
+    VIEW_WIFI_ATTACK = 12,
+    VIEW_WIFI_NETWORK = 13,
+    VIEW_WIFI_SETTINGS = 14,
+    VIEW_AERIAL = 15,
+    VIEW_BLE_SCANNING = 20,
+    VIEW_BLE_CAPTURE = 21,
+    VIEW_BLE_ATTACK = 22,
+    VIEW_IR = 30,
+    VIEW_IR_REMOTES = 31,
+    VIEW_IR_BUTTONS = 32,
+    VIEW_IR_UNIVERSALS = 33,
+    VIEW_STATUS_IDLE = 40,
+} ViewId;
+
 typedef struct {
     bool enabled; // Master switch for filtering
     bool show_ble_status;
@@ -57,6 +84,7 @@ struct AppState {
     Submenu* ble_scanning_menu;
     Submenu* ble_capture_menu;
     Submenu* ble_attack_menu;
+    Submenu* aerial_menu;
     Submenu* gps_menu;
     Submenu* ir_menu;
     Submenu* ir_remotes_menu;
@@ -69,7 +97,8 @@ struct AppState {
     FuriMutex* buffer_mutex;
     // UART Context
     UartContext* uart_context;
-    FilterConfig* filter_config;
+    // FilterConfig is small enough to embed directly
+    FilterConfig filter_config;
 
     // Settings
     Settings settings;
@@ -94,6 +123,7 @@ struct AppState {
     uint32_t last_ble_scanning_index;
     uint32_t last_ble_capture_index;
     uint32_t last_ble_attack_index;
+    uint32_t last_aerial_category_index;
     uint32_t last_gps_index;
     uint32_t last_ir_index;
     uint32_t ir_current_remote_index;
@@ -108,6 +138,9 @@ struct AppState {
     bool ir_file_buttons_mode;
     uint8_t* ir_file_buffer;
     size_t ir_file_buffer_size;
+    char ir_file_path[128];
+    size_t ir_signal_block_offsets[64];
+    size_t ir_signal_block_lengths[64];
     char* input_buffer;
     const char* uart_command;
     char* textBoxBuffer;
@@ -116,5 +149,7 @@ struct AppState {
     size_t buffer_size;
     uint8_t connect_input_stage;
     char connect_ssid[128];
+    char confirmation_message[256];
     bool came_from_settings;
+    void* active_confirm_context; // To track confirmation context for cleanup
 };

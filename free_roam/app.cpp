@@ -52,6 +52,10 @@ void FreeRoamApp::viewPortDraw(Canvas *canvas, void *context)
 }
 void FreeRoamApp::viewPortInput(InputEvent *event, void *context)
 {
+    if (event->type != InputTypeShort && event->type != InputTypeLong && event->type != InputTypeRepeat)
+    {
+        return;
+    }
     FreeRoamApp *app = static_cast<FreeRoamApp *>(context);
     furi_check(app);
     auto game = app->game.get();
@@ -91,6 +95,9 @@ void FreeRoamApp::timerCallback(void *context)
                 view_port_free(app->viewPort);
                 app->viewPort = nullptr;
             }
+
+            view_dispatcher_switch_to_view(app->viewDispatcher, FreeRoamViewSubmenu);
+            app->game.reset();
         }
     }
 }
@@ -100,8 +107,29 @@ void FreeRoamApp::callbackSubmenuChoices(uint32_t index)
     switch (index)
     {
     case FreeRoamSubmenuRun:
+        // if the board is not connected, we can't use WiFi
+        if (!isBoardConnected())
+        {
+            easy_flipper_dialog("FlipperHTTP Error", "Ensure your WiFi Developer\nBoard or Pico W is connected\nand the latest FlipperHTTP\nfirmware is installed.");
+            return;
+        }
+        // if we don't have WiFi credentials, we can't connect to WiFi in case
+        // we are not connected to WiFi yet
+        if (!hasWiFiCredentials())
+        {
+            easy_flipper_dialog("No WiFi Credentials", "Please set your WiFi SSID\nand Password in Settings.");
+            return;
+        }
+
+        // if we don't have user credentials, we can't connect to the user account
+        if (!hasUserCredentials())
+        {
+            easy_flipper_dialog("No User Credentials", "Please set your Username\nand Password in Settings.");
+            return;
+        }
+
         game = std::make_unique<FreeRoamGame>();
-        if (!game->init(&viewDispatcher, this))
+        if (!game->init(this))
         {
             FURI_LOG_E(TAG, "Failed to initialize game");
             game.reset();
@@ -146,6 +174,26 @@ void FreeRoamApp::callbackSubmenuChoices(uint32_t index)
     default:
         break;
     }
+}
+
+bool FreeRoamApp::hasWiFiCredentials()
+{
+    char ssid[64] = {0};
+    char password[64] = {0};
+    return load_char("wifi_ssid", ssid, sizeof(ssid), "flipper_http") &&
+           load_char("wifi_pass", password, sizeof(password), "flipper_http") &&
+           strlen(ssid) > 0 &&
+           strlen(password) > 0;
+}
+
+bool FreeRoamApp::hasUserCredentials()
+{
+    char username[64] = {0};
+    char password[64] = {0};
+    return load_char("user_name", username, sizeof(username), "flipper_http") &&
+           load_char("user_pass", password, sizeof(password), "flipper_http") &&
+           strlen(username) > 0 &&
+           strlen(password) > 0;
 }
 
 bool FreeRoamApp::isBoardConnected()
@@ -252,33 +300,6 @@ void FreeRoamApp::setSoundEnabled(bool enabled)
     save_char("sound", enabled ? "On" : "Off");
 }
 
-FuriString *FreeRoamApp::httpRequest(
-    const char *url,
-    HTTPMethod method,
-    const char *headers,
-    const char *payload)
-{
-    if (!flipperHttp)
-    {
-        FURI_LOG_E(TAG, "FreeRoamApp::httpRequest: FlipperHTTP is NULL");
-        return NULL;
-    }
-    snprintf(flipperHttp->file_path, sizeof(flipperHttp->file_path), STORAGE_EXT_PATH_PREFIX "/apps_data/free_roam/data/temp.json");
-    flipperHttp->save_received_data = true;
-    flipperHttp->state = IDLE;
-    if (!flipper_http_request(flipperHttp, method, url, headers, payload))
-    {
-        FURI_LOG_E(TAG, "FreeRoamApp::httpRequest: Failed to send HTTP request");
-        return NULL;
-    }
-    flipperHttp->state = RECEIVING;
-    while (flipperHttp->state != IDLE)
-    {
-        furi_delay_ms(100);
-    }
-    return flipper_http_load_from_file(flipperHttp->file_path);
-}
-
 bool FreeRoamApp::httpRequestAsync(
     const char *saveLocation,
     const char *url,
@@ -301,6 +322,79 @@ bool FreeRoamApp::httpRequestAsync(
     }
     flipperHttp->state = RECEIVING;
     return true;
+}
+
+bool FreeRoamApp::sendWiFiCredentials(const char *ssid, const char *password)
+{
+    if (!flipperHttp)
+    {
+        FURI_LOG_E(TAG, "FlipperHTTP is not initialized");
+        return false;
+    }
+    if (!ssid || !password)
+    {
+        FURI_LOG_E(TAG, "SSID or Password is NULL");
+        return false;
+    }
+    return flipper_http_save_wifi(flipperHttp, ssid, password);
+}
+
+bool FreeRoamApp::setHttpState(HTTPState state) noexcept
+{
+    if (flipperHttp)
+    {
+        flipperHttp->state = state;
+        return true;
+    }
+    return false;
+}
+
+bool FreeRoamApp::websocketStart(const char *url, uint16_t port)
+{
+    if (!flipperHttp)
+    {
+        FURI_LOG_E(TAG, "FlipperHTTP is not initialized");
+        return false;
+    }
+    if (!url || strlen(url) == 0)
+    {
+        FURI_LOG_E(TAG, "WebSocket URL is NULL or empty");
+        return false;
+    }
+    return flipper_http_websocket_start(flipperHttp, url, port, "{\"Content-Type\":\"application/json\"}");
+}
+
+bool FreeRoamApp::websocketStop()
+{
+    if (!flipperHttp)
+    {
+        FURI_LOG_E(TAG, "FreeRoamApp::websocketStop: FlipperHTTP is NULL");
+        return false;
+    }
+    return flipper_http_websocket_stop(flipperHttp);
+}
+
+bool FreeRoamApp::websocketSend(const char *message)
+{
+    if (!flipperHttp || !message)
+    {
+        FURI_LOG_E(TAG, "FreeRoamApp::websocketSend: invalid arguments");
+        return false;
+    }
+    return flipper_http_send_data(flipperHttp, message);
+}
+
+void FreeRoamApp::clearLastResponse()
+{
+    if (flipperHttp)
+    {
+        flipperHttp->last_response[0] = '\0';
+    }
+}
+
+const char *FreeRoamApp::getLastResponse() const noexcept
+{
+    return flipperHttp ? flipperHttp->last_response : nullptr;
 }
 
 FreeRoamApp::FreeRoamApp()

@@ -89,6 +89,7 @@ void logs_clear_confirmed_callback(void* context) {
     confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
 
     // Free context first
+    if(app_state) app_state->active_confirm_context = NULL;
     free(ctx);
 
     // Switch view last and update current_view
@@ -123,6 +124,7 @@ void logs_clear_cancelled_callback(void* context) {
     confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
 
     // Free context
+    if(app_state) app_state->active_confirm_context = NULL;
     free(ctx);
 
     // Switch view last and update current_view
@@ -172,6 +174,7 @@ void nvs_clear_confirmed_callback(void* context) {
         confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
         confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
 
+        if(app_state) app_state->active_confirm_context = NULL;
         free(ctx);
 
         view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
@@ -188,6 +191,7 @@ void nvs_clear_cancelled_callback(void* context) {
         confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
         confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
 
+        if(app_state) app_state->active_confirm_context = NULL;
         free(ctx);
 
         view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
@@ -195,12 +199,19 @@ void nvs_clear_cancelled_callback(void* context) {
     }
 }
 void show_app_info(void* context) {
+    if(!context) return;
     SettingsUIContext* settings_context = (SettingsUIContext*)context;
     AppState* app = (AppState*)settings_context->context;
 
     FURI_LOG_D("AppInfo", "Show app info called, context: %p", app);
 
-    const char* info_text = "";
+    const char* info_text = "Version: v1.7.0\n"
+                            "Created by: Spooky\n"
+                            "Updated by:\n"
+                            "@jaylikesbunda\n"
+                            "@tototo31\n"
+                            "Built with <3\n"
+                            "GhostESP-Revival/GhostESP-FlipperCompanion\n\n";
 
     if(app && app->confirmation_view) {
         // Create a new context for the confirmation dialog
@@ -210,6 +221,7 @@ void show_app_info(void* context) {
             return;
         }
         confirm_ctx->state = app;
+        app->active_confirm_context = confirm_ctx;
 
         // Save current view before switching
         app->previous_view = app->current_view;
@@ -226,8 +238,8 @@ void show_app_info(void* context) {
 
         // Switch to confirmation view
         FURI_LOG_D("AppInfo", "Switching to confirmation view");
-        view_dispatcher_switch_to_view(app->view_dispatcher, 7); // 7 is confirmation view
-        app->current_view = 7;
+        view_dispatcher_switch_to_view(app->view_dispatcher, VIEW_CONFIRMATION);
+        app->current_view = VIEW_CONFIRMATION;
     } else {
         FURI_LOG_E("AppInfo", "Invalid app state or confirmation view");
     }
@@ -251,6 +263,7 @@ void app_info_ok_callback(void* context) {
     confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
 
     // Free the context
+    if(app_state) app_state->active_confirm_context = NULL;
     free(ctx);
 
     // Return to previous view
@@ -289,6 +302,7 @@ void wardrive_clear_confirmed_callback(void* context) {
     confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
     confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
 
+    if(app_state) app_state->active_confirm_context = NULL;
     free(ctx);
 
     view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
@@ -310,6 +324,7 @@ void wardrive_clear_cancelled_callback(void* context) {
     confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
     confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
 
+    if(app_state) app_state->active_confirm_context = NULL;
     free(ctx);
 
     view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
@@ -340,6 +355,7 @@ void pcap_clear_confirmed_callback(void* context) {
     confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
     confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
 
+    if(app_state) app_state->active_confirm_context = NULL;
     free(ctx);
 
     view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
@@ -361,6 +377,7 @@ void pcap_clear_cancelled_callback(void* context) {
     confirmation_view_set_ok_callback(app_state->confirmation_view, NULL, NULL);
     confirmation_view_set_cancel_callback(app_state->confirmation_view, NULL, NULL);
 
+    if(app_state) app_state->active_confirm_context = NULL;
     free(ctx);
 
     view_dispatcher_switch_to_view(app_state->view_dispatcher, prev_view);
