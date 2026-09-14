@@ -11,8 +11,8 @@ void text_input_result_callback(void* ctx) {
             data[i] += 0x20;
         }
     }
-    furi_stream_buffer_send(app->data->streams.app_tx, data, len, FuriWaitForever);
-    furi_stream_buffer_send(app->data->streams.app_tx, "\r\n", 2, FuriWaitForever);
+    pipe_send(app->data->streams.app_tx, data, len);
+    pipe_send(app->data->streams.app_tx, "\r\n", 2);
     data[0] = 0;
     view_dispatcher_switch_to_view(app->view_dispatcher, ViewConsoleOutput);
     app->data->state = ViewConsoleOutput;

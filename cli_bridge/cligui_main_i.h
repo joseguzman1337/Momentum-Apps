@@ -11,6 +11,7 @@
 #include <gui/modules/text_input.h>
 #include <m-dict.h>
 #include <loader/loader.h>
+#include <toolbox/pipe.h>
 
 #define TEXT_BOX_STORE_SIZE   (4096)
 #define TEXT_INPUT_STORE_SIZE (512)
@@ -23,8 +24,8 @@ typedef enum {
 typedef struct {
     CliguiState state;
     struct {
-        FuriStreamBuffer* app_tx;
-        FuriStreamBuffer* app_rx;
+        PipeSide* app_tx;
+        PipeSide* app_rx;
     } streams;
 } CliguiData;
 
