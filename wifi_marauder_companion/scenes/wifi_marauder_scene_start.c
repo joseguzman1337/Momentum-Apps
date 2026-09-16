@@ -37,7 +37,7 @@ const WifiMarauderItem items[NUM_MENU_ITEMS] = {
     {"Scan",
      {"ap", "station", "all", "ping", "arp"},
      5,
-     {"scanap", "scansta", "scanall", "pingscan", "arpscan"},
+     {"sniffbeacon", "scanall", "scanall", "pingscan", "arpscan"},
      NO_ARGS,
      FOCUS_CONSOLE_END,
      SHOW_STOPSCAN_TIP},

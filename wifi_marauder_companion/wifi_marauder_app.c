@@ -12,38 +12,24 @@
 #define WIFI_MARAUDER_POWER_RETRIES            (3U)
 #define WIFI_MARAUDER_EXTERNAL_POWER_MIN_VOLT  (4.5f)
 
-static bool wifi_marauder_power_is_available(Power* power) {
+static bool wifi_marauder_power_start(Power* power) {
     PowerInfo info;
     power_get_info(power, &info);
 
-    /*
-     * With Flipper connected to USB, VBUS already supplies the 5 V GPIO rail.
-     * Enabling the OTG boost converter in that state is both unnecessary and
-     * explicitly postponed by the power service.  Treat either source as a
-     * valid supply so the app never fights an externally powered rail.
-     */
-    return info.is_otg_enabled || (info.voltage_vbus >= WIFI_MARAUDER_EXTERNAL_POWER_MIN_VOLT);
-}
-
-static bool wifi_marauder_power_start(Power* power, bool otg_was_requested) {
-    PowerInfo info;
-    power_get_info(power, &info);
-
-    /* Only cycle a rail controlled by Flipper. External VBUS cannot be reset here. */
-    if(info.is_otg_enabled || otg_was_requested) {
-        power_enable_otg(power, false);
-        furi_delay_ms(WIFI_MARAUDER_POWER_OFF_DELAY_MS);
+    /* The charger cannot enter boost mode while USB VBUS is present. */
+    if(info.voltage_vbus >= WIFI_MARAUDER_EXTERNAL_POWER_MIN_VOLT) {
+        FURI_LOG_I(TAG, "USB VBUS present; leaving OTG unchanged");
+        furi_delay_ms(WIFI_MARAUDER_POWER_BOOT_DELAY_MS);
+        return true;
     }
 
     for(uint8_t attempt = 0; attempt < WIFI_MARAUDER_POWER_RETRIES; attempt++) {
-        power_get_info(power, &info);
-        if(info.voltage_vbus < WIFI_MARAUDER_EXTERNAL_POWER_MIN_VOLT) {
-            power_enable_otg(power, true);
-        }
+        power_enable_otg(power, true);
 
         furi_delay_ms(WIFI_MARAUDER_POWER_BOOT_DELAY_MS);
-        if(wifi_marauder_power_is_available(power)) {
-            FURI_LOG_I(TAG, "ESP power stable (attempt %u)", attempt + 1U);
+        power_get_info(power, &info);
+        if(info.is_otg_enabled) {
+            FURI_LOG_I(TAG, "OTG enabled (attempt %u)", attempt + 1U);
             return true;
         }
 
@@ -244,9 +230,11 @@ int32_t wifi_marauder_app(void* p) {
 
     Power* power = furi_record_open(RECORD_POWER);
     const bool otg_was_requested = power_is_otg_enabled(power);
+    furi_hal_power_suppress_charge_enter();
 
-    if(!wifi_marauder_power_start(power, otg_was_requested)) {
+    if(!wifi_marauder_power_start(power)) {
         wifi_marauder_power_restore(power, otg_was_requested);
+        furi_hal_power_suppress_charge_exit();
         furi_record_close(RECORD_POWER);
         expansion_enable(expansion);
         furi_record_close(RECORD_EXPANSION);
@@ -265,6 +253,7 @@ int32_t wifi_marauder_app(void* p) {
     wifi_marauder_app_free(wifi_marauder_app);
 
     wifi_marauder_power_restore(power, otg_was_requested);
+    furi_hal_power_suppress_charge_exit();
     furi_record_close(RECORD_POWER);
 
     // Return previous state of expansion
