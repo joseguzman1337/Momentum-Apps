@@ -377,6 +377,7 @@ static void eth_deinit(usbd_device* dev) {
 
     if(eth_netif_added) {
         dhcp_stop(&eth_netif);
+        dhcp_cleanup(&eth_netif);
         netif_set_down(&eth_netif);
         netif_remove(&eth_netif);
         eth_netif_added = false;

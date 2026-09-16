@@ -12,6 +12,8 @@ def test_usb_callback_is_removed_before_rx_resources_are_freed():
         "furi_stream_buffer_free"
     )
     assert deinit.index("tcpip_shutdown()") < deinit.index("usbd_reg_config(dev, NULL)")
+    assert deinit.index("dhcp_stop(&eth_netif)") < deinit.index("dhcp_cleanup(&eth_netif)")
+    assert deinit.index("dhcp_cleanup(&eth_netif)") < deinit.index("netif_remove(&eth_netif)")
 
 
 def test_tcpip_shutdown_releases_task_and_rtos_objects():
@@ -35,6 +37,16 @@ def test_cli_ping_is_a_record_client_not_a_second_stack_owner():
     assert "fap_private_libs" not in cli_app
 
     source = (ROOT / "cli_ping_plugin.c").read_text()
-    assert "RECORD_USB_ETHERNET" in source
+    assert "usb_ethernet_broker_ping" in source
     assert "furi_hal_usb_set_config" not in source
     assert "furi_hal_usb_eth_ping" not in source
+    assert "furi_record_exists" not in source
+
+
+def test_broker_unregisters_before_usb_teardown():
+    source = (ROOT / "usb_ethernet_app.c").read_text()
+    start = source.index("static void usb_ethernet_deactivate")
+    deactivate = source[start : source.index("static void usb_ethernet_draw", start)]
+    assert deactivate.index("usb_ethernet_broker_unregister") < deactivate.index(
+        "furi_hal_usb_set_config"
+    )
