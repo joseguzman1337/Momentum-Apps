@@ -1,8 +1,67 @@
 #include "wifi_marauder_app_i.h"
 
 #include <furi.h>
-#include <furi_hal.h>
 #include <expansion/expansion.h>
+#include <power/power_service/power.h>
+
+#define TAG "WifiMarauder"
+
+#define WIFI_MARAUDER_POWER_OFF_DELAY_MS       (400U)
+#define WIFI_MARAUDER_POWER_BOOT_DELAY_MS      (1200U)
+#define WIFI_MARAUDER_POWER_RETRY_DELAY_MS     (250U)
+#define WIFI_MARAUDER_POWER_RETRIES            (3U)
+#define WIFI_MARAUDER_EXTERNAL_POWER_MIN_VOLT  (4.5f)
+
+static bool wifi_marauder_power_is_available(Power* power) {
+    PowerInfo info;
+    power_get_info(power, &info);
+
+    /*
+     * With Flipper connected to USB, VBUS already supplies the 5 V GPIO rail.
+     * Enabling the OTG boost converter in that state is both unnecessary and
+     * explicitly postponed by the power service.  Treat either source as a
+     * valid supply so the app never fights an externally powered rail.
+     */
+    return info.is_otg_enabled || (info.voltage_vbus >= WIFI_MARAUDER_EXTERNAL_POWER_MIN_VOLT);
+}
+
+static bool wifi_marauder_power_start(Power* power, bool otg_was_requested) {
+    PowerInfo info;
+    power_get_info(power, &info);
+
+    /* Only cycle a rail controlled by Flipper. External VBUS cannot be reset here. */
+    if(info.is_otg_enabled || otg_was_requested) {
+        power_enable_otg(power, false);
+        furi_delay_ms(WIFI_MARAUDER_POWER_OFF_DELAY_MS);
+    }
+
+    for(uint8_t attempt = 0; attempt < WIFI_MARAUDER_POWER_RETRIES; attempt++) {
+        power_get_info(power, &info);
+        if(info.voltage_vbus < WIFI_MARAUDER_EXTERNAL_POWER_MIN_VOLT) {
+            power_enable_otg(power, true);
+        }
+
+        furi_delay_ms(WIFI_MARAUDER_POWER_BOOT_DELAY_MS);
+        if(wifi_marauder_power_is_available(power)) {
+            FURI_LOG_I(TAG, "ESP power stable (attempt %u)", attempt + 1U);
+            return true;
+        }
+
+        FURI_LOG_W(TAG, "ESP power fault (attempt %u)", attempt + 1U);
+        power_enable_otg(power, false);
+        furi_delay_ms(WIFI_MARAUDER_POWER_OFF_DELAY_MS);
+        furi_delay_ms(WIFI_MARAUDER_POWER_RETRY_DELAY_MS);
+    }
+
+    FURI_LOG_E(TAG, "ESP power unavailable after %u attempts", WIFI_MARAUDER_POWER_RETRIES);
+    return false;
+}
+
+static void wifi_marauder_power_restore(Power* power, bool otg_was_requested) {
+    if(power_is_otg_enabled(power) != otg_was_requested) {
+        power_enable_otg(power, otg_was_requested);
+    }
+}
 
 static bool wifi_marauder_app_custom_event_callback(void* context, uint32_t event) {
     furi_assert(context);
@@ -183,25 +242,16 @@ int32_t wifi_marauder_app(void* p) {
     Expansion* expansion = furi_record_open(RECORD_EXPANSION);
     expansion_disable(expansion);
 
-    uint8_t attempts = 0;
-    bool otg_was_enabled = furi_hal_power_is_otg_enabled();
+    Power* power = furi_record_open(RECORD_POWER);
+    const bool otg_was_requested = power_is_otg_enabled(power);
 
-    /*
-     * Always give the ESP a clean power-on reset.  Leaving an already enabled
-     * rail untouched can trap an ESP32-S2 in a brownout reboot loop after a
-     * previous app or flashing session.  The discharge and boot delays are
-     * deliberately longer than the regulator's minimum timing because Wi-Fi
-     * initialization is the board's highest current transient.
-     */
-    if(otg_was_enabled) {
-        furi_hal_power_disable_otg();
-        furi_delay_ms(250);
+    if(!wifi_marauder_power_start(power, otg_was_requested)) {
+        wifi_marauder_power_restore(power, otg_was_requested);
+        furi_record_close(RECORD_POWER);
+        expansion_enable(expansion);
+        furi_record_close(RECORD_EXPANSION);
+        return -1;
     }
-    while(!furi_hal_power_is_otg_enabled() && attempts++ < 5) {
-        furi_hal_power_enable_otg();
-        furi_delay_ms(100);
-    }
-    furi_delay_ms(1000);
 
     WifiMarauderApp* wifi_marauder_app = wifi_marauder_app_alloc();
 
@@ -214,9 +264,8 @@ int32_t wifi_marauder_app(void* p) {
 
     wifi_marauder_app_free(wifi_marauder_app);
 
-    if(furi_hal_power_is_otg_enabled() && !otg_was_enabled) {
-        furi_hal_power_disable_otg();
-    }
+    wifi_marauder_power_restore(power, otg_was_requested);
+    furi_record_close(RECORD_POWER);
 
     // Return previous state of expansion
     expansion_enable(expansion);
