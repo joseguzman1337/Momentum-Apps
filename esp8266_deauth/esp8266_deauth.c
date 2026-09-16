@@ -332,6 +332,10 @@ int32_t esp8266_deauth_app(void* p) {
 
     SWiFiDeauthApp* app = malloc(sizeof(SWiFiDeauthApp));
 
+#if ENABLE_MODULE_POWER
+    const bool otg_was_enabled = furi_hal_power_is_otg_enabled();
+#endif
+
     esp8266_deauth_app_init(app);
 
     furi_hal_gpio_init_simple(app->m_GpioButtons.pinButtonUp, GpioModeOutputPushPull);
@@ -371,6 +375,11 @@ int32_t esp8266_deauth_app(void* p) {
     if(!app->mutex) {
         DEAUTH_APP_LOG_E("cannot create mutex\r\n");
         free(app);
+#if ENABLE_MODULE_POWER
+        if(furi_hal_power_is_otg_enabled() && !otg_was_enabled) {
+            furi_hal_power_disable_otg();
+        }
+#endif
         // Return previous state of expansion
         expansion_enable(expansion);
         furi_record_close(RECORD_EXPANSION);
@@ -398,7 +407,6 @@ int32_t esp8266_deauth_app(void* p) {
     furi_thread_set_stack_size(app->m_worker_thread, 1 * 1024);
     furi_thread_set_context(app->m_worker_thread, app);
     furi_thread_set_callback(app->m_worker_thread, uart_worker);
-    furi_thread_start(app->m_worker_thread);
     DEAUTH_APP_LOG_I("UART thread allocated");
 
     // Enable uart listener
@@ -406,6 +414,7 @@ int32_t esp8266_deauth_app(void* p) {
     furi_check(app->serial_handle);
     furi_hal_serial_init(app->serial_handle, FLIPPERZERO_SERIAL_BAUD);
     furi_hal_serial_async_rx_start(app->serial_handle, uart_on_irq_cb, app, false);
+    furi_thread_start(app->m_worker_thread);
     DEAUTH_APP_LOG_I("UART Listener created");
 
     SPluginEvent event;
@@ -547,7 +556,7 @@ int32_t esp8266_deauth_app(void* p) {
     DEAUTH_APP_LOG_I("App freed");
 
 #if ENABLE_MODULE_POWER
-    if(furi_hal_power_is_otg_enabled()) {
+    if(furi_hal_power_is_otg_enabled() && !otg_was_enabled) {
         furi_hal_power_disable_otg();
     }
 #endif

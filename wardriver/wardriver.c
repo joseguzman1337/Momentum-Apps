@@ -232,6 +232,8 @@ int32_t wardriver_app() {
     Expansion* expansion = furi_record_open(RECORD_EXPANSION);
     expansion_disable(expansion);
 
+    const bool otg_was_enabled = furi_hal_power_is_otg_enabled();
+
     // turn off 5v, so it gets reset on startup
     if(furi_hal_power_is_otg_enabled()) {
         furi_hal_power_disable_otg();
@@ -287,14 +289,18 @@ int32_t wardriver_app() {
                         processing = false;
                     }
                 } else if(event.input.type == InputTypeLong && event.input.key == InputKeyOk) {
-                } else if(event.input.type == InputTypePress && event.input.key == InputKeyDown) {
+                } else if(
+                    event.input.type == InputTypePress && event.input.key == InputKeyDown &&
+                    ctx->access_points_count > 0) {
                     ctx->access_points_index--;
                     if(ctx->access_points_index < 0) {
                         ctx->access_points_index = ctx->access_points_count - 1;
                     }
                     ctx->active_access_point = ctx->access_points[ctx->access_points_index];
                     ctx->pressedButton = true;
-                } else if(event.input.type == InputTypePress && event.input.key == InputKeyUp) {
+                } else if(
+                    event.input.type == InputTypePress && event.input.key == InputKeyUp &&
+                    ctx->access_points_count > 0) {
                     ctx->access_points_index++;
                     if(ctx->access_points_index >= ctx->access_points_count) {
                         ctx->access_points_index = 0;
@@ -312,7 +318,7 @@ int32_t wardriver_app() {
                 break;
             case EventTypeTick:
                 // fix for the empty active access point when there was no interaction
-                if(!ctx->pressedButton) {
+                if(!ctx->pressedButton && ctx->access_points_count > 0) {
                     ctx->access_points_index = 0;
                     ctx->active_access_point = ctx->access_points[ctx->access_points_index];
                 }
@@ -346,7 +352,7 @@ int32_t wardriver_app() {
     furi_hal_light_set(LightBlue, 0);
     furi_hal_light_set(LightGreen, 0);
 
-    if(furi_hal_power_is_otg_enabled()) {
+    if(furi_hal_power_is_otg_enabled() && !otg_was_enabled) {
         furi_hal_power_disable_otg();
     }
 

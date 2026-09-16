@@ -608,8 +608,6 @@ CameraSuiteViewCamera* camera_suite_view_camera_alloc() {
     FuriThread* thread = furi_thread_alloc_ex(
         "Camera_Suite_Camera_Rx_Thread", 2048, camera_suite_camera_worker, instance);
     instance->camera_worker_thread = thread;
-    furi_thread_start(instance->camera_worker_thread);
-
     // Allocate the serial handle for the camera.
     instance->serial_handle = furi_hal_serial_control_acquire(UART_CH);
     furi_check(instance->serial_handle);
@@ -617,6 +615,7 @@ CameraSuiteViewCamera* camera_suite_view_camera_alloc() {
 
     // Start the asynchronous receive.
     furi_hal_serial_async_rx_start(instance->serial_handle, camera_on_irq_cb, instance, false);
+    furi_thread_start(instance->camera_worker_thread);
 
     return instance;
 }

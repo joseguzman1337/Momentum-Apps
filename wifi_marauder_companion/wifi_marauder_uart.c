@@ -152,11 +152,11 @@ WifiMarauderUart* wifi_marauder_uart_init(
     furi_thread_set_stack_size(uart->rx_thread, 1024);
     furi_thread_set_context(uart->rx_thread, uart);
     furi_thread_set_callback(uart->rx_thread, uart_worker);
-    furi_thread_start(uart->rx_thread);
     uart->serial_handle = furi_hal_serial_control_acquire(channel);
     furi_check(uart->serial_handle);
     furi_hal_serial_init(uart->serial_handle, BAUDRATE);
     furi_hal_serial_async_rx_start(uart->serial_handle, wifi_marauder_uart_on_irq_cb, uart, false);
+    furi_thread_start(uart->rx_thread);
 
     return uart;
 }

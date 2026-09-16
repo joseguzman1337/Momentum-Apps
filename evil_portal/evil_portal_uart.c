@@ -147,8 +147,6 @@ Evil_PortalUart* evil_portal_uart_init(Evil_PortalApp* app) {
     furi_thread_set_context(uart->rx_thread, uart);
     furi_thread_set_callback(uart->rx_thread, uart_worker);
 
-    furi_thread_start(uart->rx_thread);
-
     if(app->BAUDRATE == 0) {
         app->BAUDRATE = 115200;
     }
@@ -156,6 +154,7 @@ Evil_PortalUart* evil_portal_uart_init(Evil_PortalApp* app) {
     furi_check(uart->serial_handle);
     furi_hal_serial_init(uart->serial_handle, app->BAUDRATE);
     furi_hal_serial_async_rx_start(uart->serial_handle, evil_portal_uart_on_irq_cb, uart, false);
+    furi_thread_start(uart->rx_thread);
 
     return uart;
 }
