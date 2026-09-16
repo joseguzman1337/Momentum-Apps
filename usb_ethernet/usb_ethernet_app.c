@@ -3,6 +3,9 @@
 #include <furi_hal_usb_eth.h>
 #include <gui/gui.h>
 #include <input/input.h>
+#include <storage/storage.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef struct {
     FuriHalUsbInterface* previous_usb;
@@ -35,8 +38,62 @@ static void usb_ethernet_input(InputEvent* event, void* context) {
     furi_message_queue_put(context, event, FuriWaitForever);
 }
 
+static char* usb_ethernet_next_arg(char** cursor) {
+    while(**cursor == ' ') (*cursor)++;
+    if(**cursor == '\0') return NULL;
+
+    char* arg = *cursor;
+    while((**cursor != '\0') && (**cursor != ' ')) (*cursor)++;
+    if(**cursor != '\0') *(*cursor)++ = '\0';
+    return arg;
+}
+
+static uint32_t usb_ethernet_parse_u32(const char* value, uint32_t fallback) {
+    if(!value) return fallback;
+    char* end;
+    unsigned long parsed = strtoul(value, &end, 10);
+    return ((*value != '\0') && (*end == '\0') && (parsed <= UINT32_MAX)) ?
+               (uint32_t)parsed :
+               fallback;
+}
+
+static int32_t usb_ethernet_run_headless(char* args) {
+    char* cursor = args;
+    char* command = usb_ethernet_next_arg(&cursor);
+    char* first = usb_ethernet_next_arg(&cursor);
+    char* second = usb_ethernet_next_arg(&cursor);
+    char* third = usb_ethernet_next_arg(&cursor);
+
+    if(!command) return -1;
+
+    FuriHalUsbInterface* previous_usb = furi_hal_usb_get_config();
+    if(furi_hal_usb_is_locked()) furi_hal_usb_unlock();
+    if(!furi_hal_usb_set_config(&usb_eth, NULL)) return -1;
+
+    bool success = false;
+    if(strcmp(command, "ping") == 0 && first) {
+        success = furi_hal_usb_eth_ping(
+            first,
+            usb_ethernet_parse_u32(second, 2),
+            usb_ethernet_parse_u32(third, 1500));
+        printf(success ? "Ping success!\r\n" : "Ping failed.\r\n");
+    } else if(strcmp(command, "http") == 0 && first && second) {
+        success = furi_hal_usb_eth_http_download_to_file(
+            first, second, usb_ethernet_parse_u32(third, 30000));
+    }
+
+    furi_hal_usb_set_config(previous_usb, NULL);
+    return success ? 0 : -1;
+}
+
 int32_t usb_ethernet_app(void* context) {
-    UNUSED(context);
+    if(context && *(const char*)context) {
+        char* args = strdup(context);
+        if(!args) return -1;
+        int32_t result = usb_ethernet_run_headless(args);
+        free(args);
+        return result;
+    }
 
     FuriMessageQueue* queue = furi_message_queue_alloc(8, sizeof(InputEvent));
     UsbEthernetApp app = {.previous_usb = furi_hal_usb_get_config()};

@@ -9,4 +9,18 @@ App(
     fap_author="Antigravity",
     fap_version="1.0",
     fap_description="Enables USB CDC-ECM Ethernet",
+    sources=["usb_ethernet_app.c", "usb_ethernet_private.c"],
+    fap_private_libs=[
+        Lib(
+            name="lwip",
+            fap_include_paths=[".", "../../"],
+            cincludes=[
+                ".",
+                "../../../lib/lwip/src/include",
+                "../../../lib/lwip/port/include",
+                "../../../lib/lwip/contrib/ports/freertos/include",
+            ],
+            sources=["*.c"],
+        ),
+    ],
 )
