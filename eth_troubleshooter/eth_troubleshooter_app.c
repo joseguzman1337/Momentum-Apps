@@ -42,70 +42,69 @@ static void draw_process_selector(Canvas* canvas, DrawProcess selector, CursorPo
 }
 
 static void draw_module_status(Canvas* canvas, EthWorkerState state) {
-    FuriString* string = furi_string_alloc_set("aaaaaaaaa");
+    const char* string;
 
     switch(state) {
     case EthWorkerStateNotInited:
-        furi_string_printf(string, "no init");
+        string = "no init";
         break;
     case EthWorkerStateDefaultNext:
-        furi_string_printf(string, "df next");
+        string = "df next";
         break;
     case EthWorkerStateInited:
-        furi_string_printf(string, "init ok");
+        string = "init ok";
         break;
     case EthWorkerStateInit:
-        furi_string_printf(string, "init");
+        string = "init";
         break;
     case EthWorkerStateModulePowerOn:
-        furi_string_printf(string, "pwr on");
+        string = "pwr on";
         break;
     case EthWorkerStateModuleConnect:
-        furi_string_printf(string, "connect");
+        string = "connect";
         break;
     case EthWorkerStateMACInit:
-        furi_string_printf(string, "mac init");
+        string = "mac init";
         break;
     case EthWorkerStateStaticIp:
-        furi_string_printf(string, "static ip");
+        string = "static ip";
         break;
     case EthWorkerStateDHCP:
-        furi_string_printf(string, "dhcp req.");
+        string = "dhcp req.";
         break;
     case EthWorkerStateOnline:
-        furi_string_printf(string, "online");
+        string = "online";
         break;
     case EthWorkerStatePing:
-        furi_string_printf(string, "ping");
+        string = "ping";
         break;
     case EthWorkerStateStop:
-        furi_string_printf(string, "stop");
+        string = "stop";
         break;
     case EthWorkerStateReset:
-        furi_string_printf(string, "reset");
+        string = "reset";
         break;
 
     default:
-        furi_string_printf(string, "unknown");
+        string = "unknown";
         break;
     }
 
-    canvas_draw_str(canvas, 45, 7, furi_string_get_cstr(string));
-    furi_string_free(string);
+    canvas_draw_str(canvas, 45, 7, string);
 }
 
 static void draw_battery_consumption(Canvas* canvas, double cons) {
-    FuriString* string = furi_string_alloc_set("aaaaaaaa");
+    char buffer[8];
+    const char* string = buffer;
     if(cons >= 0) {
-        furi_string_printf(string, "--");
+        string = "--";
     } else if(cons < -1) {
-        furi_string_printf(string, "%1.1fk", -cons);
+        snprintf(buffer, sizeof(buffer), "%1.1fk", -cons);
     } else {
-        furi_string_printf(string, "%3.f", -(cons * 1000));
+        snprintf(buffer, sizeof(buffer), "%3.f", -(cons * 1000));
     }
 
-    canvas_draw_str(canvas, 112, 7, furi_string_get_cstr(string));
-    furi_string_free(string);
+    canvas_draw_str(canvas, 112, 7, string);
 }
 
 static void eth_troubleshooter_app_draw_callback(Canvas* canvas, void* ctx) {
