@@ -185,11 +185,23 @@ int32_t wifi_marauder_app(void* p) {
 
     uint8_t attempts = 0;
     bool otg_was_enabled = furi_hal_power_is_otg_enabled();
+
+    /*
+     * Always give the ESP a clean power-on reset.  Leaving an already enabled
+     * rail untouched can trap an ESP32-S2 in a brownout reboot loop after a
+     * previous app or flashing session.  The discharge and boot delays are
+     * deliberately longer than the regulator's minimum timing because Wi-Fi
+     * initialization is the board's highest current transient.
+     */
+    if(otg_was_enabled) {
+        furi_hal_power_disable_otg();
+        furi_delay_ms(250);
+    }
     while(!furi_hal_power_is_otg_enabled() && attempts++ < 5) {
         furi_hal_power_enable_otg();
-        furi_delay_ms(10);
+        furi_delay_ms(100);
     }
-    furi_delay_ms(200);
+    furi_delay_ms(1000);
 
     WifiMarauderApp* wifi_marauder_app = wifi_marauder_app_alloc();
 
