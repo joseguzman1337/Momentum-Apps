@@ -4,6 +4,7 @@
 #include "app_api_table_i.h"
 
 static_assert(!has_hash_collisions(app_api_table), "Detected API method hash collision!");
+static constexpr auto app_packed_api_table = pack_hashtable(app_api_table);
 
 constexpr HashtableApiInterface applicaton_hashtable_api_interface{
     {
@@ -11,8 +12,11 @@ constexpr HashtableApiInterface applicaton_hashtable_api_interface{
         .api_version_minor = 0,
         .resolver_callback = &elf_resolve_from_hashtable,
     },
-    app_api_table.cbegin(),
-    app_api_table.cend(),
+    app_packed_api_table.hash_low.data(),
+    app_packed_api_table.hash_high.data(),
+    app_packed_api_table.addresses.data(),
+    app_api_table.size(),
+    app_packed_api_table.low_width,
 };
 
 extern "C" const ElfApiInterface* const application_api_interface =

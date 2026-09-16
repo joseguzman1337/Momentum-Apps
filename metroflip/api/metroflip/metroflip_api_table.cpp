@@ -9,6 +9,7 @@
 #include "metroflip_api_table_i.h"
 
 static_assert(!has_hash_collisions(metroflip_api_table), "Detected API method hash collision!");
+static constexpr auto metroflip_packed_api_table = pack_hashtable(metroflip_api_table);
 
 constexpr HashtableApiInterface applicaton_hashtable_api_interface{
     {
@@ -17,9 +18,11 @@ constexpr HashtableApiInterface applicaton_hashtable_api_interface{
         /* generic resolver using pre-sorted array */
         .resolver_callback = &elf_resolve_from_hashtable,
     },
-    /* pointers to application's API table boundaries */
-    metroflip_api_table.cbegin(),
-    metroflip_api_table.cend(),
+    metroflip_packed_api_table.hash_low.data(),
+    metroflip_packed_api_table.hash_high.data(),
+    metroflip_packed_api_table.addresses.data(),
+    metroflip_api_table.size(),
+    metroflip_packed_api_table.low_width,
 };
 
 /* Casting to generic resolver to use in Composite API resolver */

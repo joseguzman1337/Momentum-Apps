@@ -1,0 +1,13 @@
+App(
+    appid="hitags_em4100",
+    name="Hitag S EM4100 Writer",
+    apptype=FlipperAppType.EXTERNAL,
+    targets=["f7"],
+    entry_point="hitags_em4100_app",
+    requires=["gui"],
+    stack_size=4 * 1024,
+    fap_category="RFID",
+    fap_version="1.0",
+    fap_description="Opt-in EM4100 writer for ID8268 / Hitag S clone chips",
+    fap_author="Unleashed contributors; Momentum integration",
+)

@@ -1,0 +1,10 @@
+App(
+    appid="chip8",
+    name="CHIP8 Emulator",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="chip8_app",
+    stack_size=4 * 1024,
+    fap_category="Games",
+    fap_version="0.1.0",
+    fap_description="CHIP-8 emulator ported from v1nc/flipperzero-firmware",
+)
