@@ -418,8 +418,8 @@ void wardriver_uart_init(Context* ctx) {
     ctx->serial_handle_esp = furi_hal_serial_control_acquire(UART_CH_ESP);
     furi_check(ctx->serial_handle_esp);
     furi_hal_serial_init(ctx->serial_handle_esp, 115200);
-    furi_hal_serial_async_rx_start(ctx->serial_handle_esp, uart_cb_esp, ctx, false);
     furi_thread_start(ctx->thread_esp);
+    furi_hal_serial_async_rx_start(ctx->serial_handle_esp, uart_cb_esp, ctx, false);
 
     if(UART_CH_ESP != UART_CH_GPS) {
         ctx->rx_stream_gps = furi_stream_buffer_alloc(RX_BUF_SIZE, 1);
@@ -433,8 +433,8 @@ void wardriver_uart_init(Context* ctx) {
         ctx->serial_handle_gps = furi_hal_serial_control_acquire(UART_CH_GPS);
         furi_check(ctx->serial_handle_gps);
         furi_hal_serial_init(ctx->serial_handle_gps, 9600);
-        furi_hal_serial_async_rx_start(ctx->serial_handle_gps, uart_cb_gps, ctx, false);
         furi_thread_start(ctx->thread_gps);
+        furi_hal_serial_async_rx_start(ctx->serial_handle_gps, uart_cb_gps, ctx, false);
     }
 
     return;

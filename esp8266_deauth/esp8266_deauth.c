@@ -413,8 +413,8 @@ int32_t esp8266_deauth_app(void* p) {
     app->serial_handle = furi_hal_serial_control_acquire(FuriHalSerialIdUsart);
     furi_check(app->serial_handle);
     furi_hal_serial_init(app->serial_handle, FLIPPERZERO_SERIAL_BAUD);
-    furi_hal_serial_async_rx_start(app->serial_handle, uart_on_irq_cb, app, false);
     furi_thread_start(app->m_worker_thread);
+    furi_hal_serial_async_rx_start(app->serial_handle, uart_on_irq_cb, app, false);
     DEAUTH_APP_LOG_I("UART Listener created");
 
     SPluginEvent event;

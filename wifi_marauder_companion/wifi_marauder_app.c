@@ -23,7 +23,7 @@ static void wifi_marauder_app_tick_event_callback(void* context) {
 }
 
 WifiMarauderApp* wifi_marauder_app_alloc() {
-    WifiMarauderApp* app = malloc(sizeof(WifiMarauderApp));
+    WifiMarauderApp* app = calloc(1, sizeof(WifiMarauderApp));
 
     app->gui = furi_record_open(RECORD_GUI);
     app->dialogs = furi_record_open(RECORD_DIALOGS);

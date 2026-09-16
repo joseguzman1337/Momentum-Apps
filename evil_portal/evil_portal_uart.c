@@ -153,8 +153,8 @@ Evil_PortalUart* evil_portal_uart_init(Evil_PortalApp* app) {
     uart->serial_handle = furi_hal_serial_control_acquire(UART_CH);
     furi_check(uart->serial_handle);
     furi_hal_serial_init(uart->serial_handle, app->BAUDRATE);
-    furi_hal_serial_async_rx_start(uart->serial_handle, evil_portal_uart_on_irq_cb, uart, false);
     furi_thread_start(uart->rx_thread);
+    furi_hal_serial_async_rx_start(uart->serial_handle, evil_portal_uart_on_irq_cb, uart, false);
 
     return uart;
 }

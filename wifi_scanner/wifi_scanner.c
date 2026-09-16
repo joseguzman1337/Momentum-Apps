@@ -923,8 +923,8 @@ int32_t wifi_scanner_app(void* p) {
     app->serial_handle = furi_hal_serial_control_acquire(UART_CH);
     furi_check(app->serial_handle);
     furi_hal_serial_init(app->serial_handle, FLIPPERZERO_SERIAL_BAUD);
-    furi_hal_serial_async_rx_start(app->serial_handle, uart_on_irq_cb, app, false);
     furi_thread_start(app->m_worker_thread);
+    furi_hal_serial_async_rx_start(app->serial_handle, uart_on_irq_cb, app, false);
     WIFI_APP_LOG_I("UART Listener created");
 
     // Because we assume that module was on before we launched the app. We need to ensure that module will be in initial state on app start

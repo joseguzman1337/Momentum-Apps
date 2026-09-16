@@ -612,10 +612,10 @@ CameraSuiteViewCamera* camera_suite_view_camera_alloc() {
     instance->serial_handle = furi_hal_serial_control_acquire(UART_CH);
     furi_check(instance->serial_handle);
     furi_hal_serial_init(instance->serial_handle, 230400);
+    furi_thread_start(instance->camera_worker_thread);
 
     // Start the asynchronous receive.
     furi_hal_serial_async_rx_start(instance->serial_handle, camera_on_irq_cb, instance, false);
-    furi_thread_start(instance->camera_worker_thread);
 
     return instance;
 }

@@ -142,7 +142,7 @@ WifiMarauderUart* wifi_marauder_uart_init(
     WifiMarauderApp* app,
     FuriHalSerialId channel,
     const char* thread_name) {
-    WifiMarauderUart* uart = malloc(sizeof(WifiMarauderUart));
+    WifiMarauderUart* uart = calloc(1, sizeof(WifiMarauderUart));
 
     uart->app = app;
     uart->rx_stream = furi_stream_buffer_alloc(RX_BUF_SIZE, 1);
@@ -155,8 +155,8 @@ WifiMarauderUart* wifi_marauder_uart_init(
     uart->serial_handle = furi_hal_serial_control_acquire(channel);
     furi_check(uart->serial_handle);
     furi_hal_serial_init(uart->serial_handle, BAUDRATE);
-    furi_hal_serial_async_rx_start(uart->serial_handle, wifi_marauder_uart_on_irq_cb, uart, false);
     furi_thread_start(uart->rx_thread);
+    furi_hal_serial_async_rx_start(uart->serial_handle, wifi_marauder_uart_on_irq_cb, uart, false);
 
     return uart;
 }
