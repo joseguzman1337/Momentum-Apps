@@ -27,6 +27,7 @@
 #include <lwip/icmp.h>
 #include <lwip/prot/icmp.h>
 #include <lwip/apps/http_client.h>
+#include "lwip_shutdown.h"
 
 #include <furi/core/semaphore.h>
 #include <furi/core/thread.h>
@@ -327,11 +328,7 @@ static void eth_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     usbd_reg_config(dev, eth_ep_config);
     usbd_reg_control(dev, eth_control);
 
-    static bool lwip_inited = false;
-    if(!lwip_inited) {
-        tcpip_init(NULL, NULL);
-        lwip_inited = true;
-    }
+    tcpip_init(NULL, NULL);
 
     /* Guard against double-add on unexpected reinit */
     if(!eth_netif_added) {
@@ -360,6 +357,9 @@ static void eth_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
 }
 
 static void eth_deinit(usbd_device* dev) {
+    /* Stop USB ISR delivery before releasing anything its callback can touch. */
+    usbd_reg_endpoint(dev, ETH_RNDIS_RX_EP, NULL);
+
     /* Stop RX worker before touching LwIP state */
     eth_rx_thread_run = false;
     if(eth_rx_thread) {
@@ -382,6 +382,9 @@ static void eth_deinit(usbd_device* dev) {
         eth_netif_added = false;
     }
 
+    /* No private lwIP task or queue may outlive the FAP image. */
+    tcpip_shutdown();
+
     usbd_reg_config(dev, NULL);
     usbd_reg_control(dev, NULL);
 }
@@ -399,6 +402,7 @@ static void eth_on_suspend(usbd_device* dev) {
 static usbd_respond eth_ep_config(usbd_device* dev, uint8_t cfg) {
     switch(cfg) {
     case 0:
+        usbd_reg_endpoint(dev, ETH_RNDIS_RX_EP, NULL);
         usbd_ep_deconfig(dev, ETH_RNDIS_NTF_EP);
         usbd_ep_deconfig(dev, ETH_RNDIS_TX_EP);
         usbd_ep_deconfig(dev, ETH_RNDIS_RX_EP);

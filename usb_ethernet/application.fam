@@ -31,18 +31,5 @@ App(
     apptype=FlipperAppType.PLUGIN,
     entry_point="cli_ping_ep",
     requires=["cli"],
-    sources=["cli_ping_plugin.c", "usb_ethernet_private.c"],
-    fap_private_libs=[
-        Lib(
-            name="lwip",
-            fap_include_paths=[".", "../../"],
-            cincludes=[
-                ".",
-                "../../../lib/lwip/src/include",
-                "../../../lib/lwip/port/include",
-                "../../../lib/lwip/contrib/ports/freertos/include",
-            ],
-            sources=["*.c"],
-        ),
-    ],
+    sources=["cli_ping_plugin.c"],
 )

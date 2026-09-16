@@ -1,8 +1,7 @@
 #include <furi.h>
-#include <furi_hal_usb.h>
 #include <toolbox/cli/cli_command.h>
 
-#include "furi_hal_usb_eth.h"
+#include "usb_ethernet_service.h"
 
 static void cli_ping_execute(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
@@ -16,13 +15,11 @@ static void cli_ping_execute(PipeSide* pipe, FuriString* args, void* context) {
     const char* host = furi_string_get_cstr(args);
     printf("Pinging %s...\r\n", host);
 
-    FuriHalUsbInterface* previous_usb = furi_hal_usb_get_config();
-    if(furi_hal_usb_is_locked()) furi_hal_usb_unlock();
-
     bool success = false;
-    if(furi_hal_usb_set_config(&usb_eth, NULL)) {
-        success = furi_hal_usb_eth_ping(host, 4, 2000);
-        furi_hal_usb_set_config(previous_usb, NULL);
+    if(furi_record_exists(RECORD_USB_ETHERNET)) {
+        UsbEthernetService* service = furi_record_open(RECORD_USB_ETHERNET);
+        success = service->ping(service->context, host, 4, 2000);
+        furi_record_close(RECORD_USB_ETHERNET);
     }
 
     printf(success ? "Ping success!\r\n" : "Ping failed.\r\n");

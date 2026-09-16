@@ -49,6 +49,8 @@
 #include "lwip/pbuf.h"
 #include "lwip/etharp.h"
 #include "netif/ethernet.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 #define TCPIP_MSG_VAR_REF(name)     API_VAR_REF(name)
 #define TCPIP_MSG_VAR_DECLARE(name) API_VAR_DECLARE(struct tcpip_msg, name)
@@ -59,6 +61,10 @@
 static tcpip_init_done_fn tcpip_init_done;
 static void *tcpip_init_done_arg;
 static sys_mbox_t tcpip_mbox;
+static sys_sem_t tcpip_shutdown_done;
+static sys_thread_t tcpip_thread_handle;
+static int tcpip_thread_running;
+static int tcpip_shutdown_requested;
 
 #if LWIP_TCPIP_CORE_LOCKING
 /** The global semaphore to lock the stack. */
@@ -150,6 +156,11 @@ tcpip_thread(void *arg)
     /* wait for a message, timeouts are processed while waiting */
     tcpip_mbox_fetch(&tcpip_mbox, (void **)&msg);
     if (msg == NULL) {
+      if (tcpip_shutdown_requested) {
+        UNLOCK_TCPIP_CORE();
+        sys_sem_signal(&tcpip_shutdown_done);
+        vTaskSuspend(NULL);
+      }
       LWIP_DEBUGF(TCPIP_DEBUG, ("tcpip_thread: invalid message: NULL\n"));
       LWIP_ASSERT("tcpip_thread: invalid message", 0);
       continue;
@@ -658,6 +669,10 @@ tcpip_callback_wait(tcpip_callback_fn function, void *ctx)
 void
 tcpip_init(tcpip_init_done_fn initfunc, void *arg)
 {
+  if (tcpip_thread_running) {
+    return;
+  }
+
   lwip_init();
 
   tcpip_init_done = initfunc;
@@ -665,13 +680,46 @@ tcpip_init(tcpip_init_done_fn initfunc, void *arg)
   if (sys_mbox_new(&tcpip_mbox, TCPIP_MBOX_SIZE) != ERR_OK) {
     LWIP_ASSERT("failed to create tcpip_thread mbox", 0);
   }
+  if (sys_sem_new(&tcpip_shutdown_done, 0) != ERR_OK) {
+    LWIP_ASSERT("failed to create tcpip_thread shutdown semaphore", 0);
+  }
 #if LWIP_TCPIP_CORE_LOCKING
   if (sys_mutex_new(&lock_tcpip_core) != ERR_OK) {
     LWIP_ASSERT("failed to create lock_tcpip_core", 0);
   }
 #endif /* LWIP_TCPIP_CORE_LOCKING */
 
-  sys_thread_new(TCPIP_THREAD_NAME, tcpip_thread, NULL, TCPIP_THREAD_STACKSIZE, TCPIP_THREAD_PRIO);
+  tcpip_shutdown_requested = 0;
+  tcpip_thread_handle = sys_thread_new(
+    TCPIP_THREAD_NAME, tcpip_thread, NULL, TCPIP_THREAD_STACKSIZE, TCPIP_THREAD_PRIO);
+  tcpip_thread_running = 1;
+}
+
+void
+tcpip_shutdown(void)
+{
+  if (!tcpip_thread_running) {
+    return;
+  }
+
+  tcpip_shutdown_requested = 1;
+  sys_mbox_post(&tcpip_mbox, NULL);
+  sys_arch_sem_wait(&tcpip_shutdown_done, 0);
+
+  vTaskDelete((TaskHandle_t)tcpip_thread_handle.thread_handle);
+  tcpip_thread_handle.thread_handle = NULL;
+  sys_sem_free(&tcpip_shutdown_done);
+  sys_sem_set_invalid(&tcpip_shutdown_done);
+  sys_mbox_free(&tcpip_mbox);
+  sys_mbox_set_invalid(&tcpip_mbox);
+#if LWIP_TCPIP_CORE_LOCKING
+  sys_mutex_free(&lock_tcpip_core);
+  sys_mutex_set_invalid(&lock_tcpip_core);
+#endif
+  tcpip_init_done = NULL;
+  tcpip_init_done_arg = NULL;
+  tcpip_shutdown_requested = 0;
+  tcpip_thread_running = 0;
 }
 
 /**

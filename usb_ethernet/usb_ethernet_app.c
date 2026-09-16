@@ -6,15 +6,97 @@
 #include <storage/storage.h>
 #include <stdlib.h>
 #include <string.h>
+#include "usb_ethernet_service.h"
 
 typedef struct {
     FuriHalUsbInterface* previous_usb;
+    bool was_locked;
+    bool usb_active;
+    bool record_active;
+    FuriMutex* service_mutex;
+    UsbEthernetService service;
     enum {
         UsbEthernetPingNotRun,
         UsbEthernetPingSuccess,
         UsbEthernetPingFailed,
     } ping_status;
 } UsbEthernetApp;
+
+static bool usb_ethernet_service_ping(
+    void* context,
+    const char* host,
+    uint32_t count,
+    uint32_t timeout_ms) {
+    UsbEthernetApp* app = context;
+    furi_mutex_acquire(app->service_mutex, FuriWaitForever);
+    bool result = app->usb_active && furi_hal_usb_eth_ping(host, count, timeout_ms);
+    furi_mutex_release(app->service_mutex);
+    return result;
+}
+
+static bool usb_ethernet_service_http(
+    void* context,
+    const char* url,
+    const char* dest_path,
+    uint32_t timeout_ms) {
+    UsbEthernetApp* app = context;
+    furi_mutex_acquire(app->service_mutex, FuriWaitForever);
+    bool result = app->usb_active &&
+                  furi_hal_usb_eth_http_download_to_file(url, dest_path, timeout_ms);
+    furi_mutex_release(app->service_mutex);
+    return result;
+}
+
+static bool usb_ethernet_service_status(void* context) {
+    UsbEthernetApp* app = context;
+    furi_mutex_acquire(app->service_mutex, FuriWaitForever);
+    bool result = app->usb_active;
+    furi_mutex_release(app->service_mutex);
+    return result;
+}
+
+static bool usb_ethernet_activate(UsbEthernetApp* app, bool publish_service) {
+    app->previous_usb = furi_hal_usb_get_config();
+    app->was_locked = furi_hal_usb_is_locked();
+    app->service_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+    app->service = (UsbEthernetService){
+        .context = app,
+        .ping = usb_ethernet_service_ping,
+        .http_download = usb_ethernet_service_http,
+        .status = usb_ethernet_service_status,
+    };
+
+    if(app->was_locked) furi_hal_usb_unlock();
+    if(!furi_hal_usb_set_config(&usb_eth, NULL)) {
+        if(app->was_locked) furi_hal_usb_lock();
+        furi_mutex_free(app->service_mutex);
+        app->service_mutex = NULL;
+        return false;
+    }
+
+    app->usb_active = true;
+    if(publish_service) {
+        furi_record_create(RECORD_USB_ETHERNET, &app->service);
+        app->record_active = true;
+    }
+    return true;
+}
+
+static void usb_ethernet_deactivate(UsbEthernetApp* app) {
+    furi_mutex_acquire(app->service_mutex, FuriWaitForever);
+    app->usb_active = false;
+    furi_mutex_release(app->service_mutex);
+
+    if(app->record_active) {
+        while(!furi_record_destroy(RECORD_USB_ETHERNET)) furi_delay_ms(10);
+        app->record_active = false;
+    }
+
+    furi_hal_usb_set_config(app->previous_usb, NULL);
+    if(app->was_locked) furi_hal_usb_lock();
+    furi_mutex_free(app->service_mutex);
+    app->service_mutex = NULL;
+}
 
 static void usb_ethernet_draw(Canvas* canvas, void* context) {
     UsbEthernetApp* app = context;
@@ -57,7 +139,7 @@ static uint32_t usb_ethernet_parse_u32(const char* value, uint32_t fallback) {
                fallback;
 }
 
-static int32_t usb_ethernet_run_headless(char* args) {
+static int32_t usb_ethernet_run_headless(UsbEthernetApp* app, char* args) {
     char* cursor = args;
     char* command = usb_ethernet_next_arg(&cursor);
     char* first = usb_ethernet_next_arg(&cursor);
@@ -66,9 +148,7 @@ static int32_t usb_ethernet_run_headless(char* args) {
 
     if(!command) return -1;
 
-    FuriHalUsbInterface* previous_usb = furi_hal_usb_get_config();
-    if(furi_hal_usb_is_locked()) furi_hal_usb_unlock();
-    if(!furi_hal_usb_set_config(&usb_eth, NULL)) return -1;
+    if(!usb_ethernet_activate(app, false)) return -1;
 
     bool success = false;
     if(strcmp(command, "ping") == 0 && first) {
@@ -82,24 +162,24 @@ static int32_t usb_ethernet_run_headless(char* args) {
             first, second, usb_ethernet_parse_u32(third, 30000));
     }
 
-    furi_hal_usb_set_config(previous_usb, NULL);
+    usb_ethernet_deactivate(app);
     return success ? 0 : -1;
 }
 
 int32_t usb_ethernet_app(void* context) {
     if(context && *(const char*)context) {
+        UsbEthernetApp app = {0};
         char* args = strdup(context);
         if(!args) return -1;
-        int32_t result = usb_ethernet_run_headless(args);
+        int32_t result = usb_ethernet_run_headless(&app, args);
         free(args);
         return result;
     }
 
     FuriMessageQueue* queue = furi_message_queue_alloc(8, sizeof(InputEvent));
-    UsbEthernetApp app = {.previous_usb = furi_hal_usb_get_config()};
+    UsbEthernetApp app = {0};
 
-    if(furi_hal_usb_is_locked()) furi_hal_usb_unlock();
-    if(!furi_hal_usb_set_config(&usb_eth, NULL)) {
+    if(!usb_ethernet_activate(&app, true)) {
         furi_message_queue_free(queue);
         return -1;
     }
@@ -116,7 +196,7 @@ int32_t usb_ethernet_app(void* context) {
         if((event.type == InputTypeShort) && (event.key == InputKeyBack)) {
             break;
         } else if((event.type == InputTypeShort) && (event.key == InputKeyOk)) {
-            app.ping_status = furi_hal_usb_eth_ping("172.16.0.1", 2, 1500) ?
+            app.ping_status = usb_ethernet_service_ping(&app, "172.16.0.1", 2, 1500) ?
                                   UsbEthernetPingSuccess :
                                   UsbEthernetPingFailed;
             view_port_update(viewport);
@@ -127,6 +207,6 @@ int32_t usb_ethernet_app(void* context) {
     view_port_free(viewport);
     furi_record_close(RECORD_GUI);
     furi_message_queue_free(queue);
-    furi_hal_usb_set_config(app.previous_usb, NULL);
+    usb_ethernet_deactivate(&app);
     return 0;
 }
