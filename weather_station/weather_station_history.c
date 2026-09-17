@@ -187,7 +187,7 @@ WSHistoryStateAddKey
 
     // or add new record
     if(!sensor_found) { //-V547
-        WSHistoryItem* item = WSHistoryItemArray_push_back_raw(instance->history->data);
+        WSHistoryItem* item = WSHistoryItemArray_push_raw(instance->history->data);
         item->preset = malloc(sizeof(SubGhzRadioPreset));
         item->type = decoder_base->protocol->type;
         item->preset->frequency = preset->frequency;
