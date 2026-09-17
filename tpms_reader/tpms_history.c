@@ -187,7 +187,7 @@ TPMSHistoryStateAddKey
 
     // or add new record
     if(!sensor_found) { //-V547
-        TPMSHistoryItem* item = TPMSHistoryItemArray_push_raw(instance->history->data);
+        TPMSHistoryItem* item = TPMSHistoryItemArray_push_back_raw(instance->history->data);
         item->preset = malloc(sizeof(SubGhzRadioPreset));
         item->type = decoder_base->protocol->type;
         item->preset->frequency = preset->frequency;

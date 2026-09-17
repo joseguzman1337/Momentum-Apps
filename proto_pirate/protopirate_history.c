@@ -273,7 +273,7 @@ bool protopirate_history_add_to_history(
     furi_check(offset <= UINT16_MAX);
     furi_string_cat_str(instance->text_arena, text_cstr);
 
-    ProtoPirateHistoryItem* item = ProtoPirateHistoryItemArray_push_raw(instance->data);
+    ProtoPirateHistoryItem* item = ProtoPirateHistoryItemArray_push_back_raw(instance->data);
     item->seq_id = seq;
     item->text_offset = (uint16_t)offset;
     item->text_len = (uint16_t)text_len;

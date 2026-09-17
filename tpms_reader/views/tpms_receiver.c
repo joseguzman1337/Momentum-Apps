@@ -145,7 +145,7 @@ void tpms_view_receiver_add_item_to_menu(
         TPMSReceiverModel * model,
         {
             TPMSReceiverMenuItem* item_menu =
-                TPMSReceiverMenuItemArray_push_raw(model->history->data);
+                TPMSReceiverMenuItemArray_push_back_raw(model->history->data);
             item_menu->item_str = furi_string_alloc_set(name);
             item_menu->type = type;
             if((model->idx == model->history_item - 1)) {

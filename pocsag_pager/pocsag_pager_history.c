@@ -167,7 +167,7 @@ PCSGHistoryStateAddKey
     } while(false);
     flipper_format_free(fff);
 
-    PCSGHistoryItem* item = PCSGHistoryItemArray_push_raw(instance->history->data);
+    PCSGHistoryItem* item = PCSGHistoryItemArray_push_back_raw(instance->history->data);
     item->preset = malloc(sizeof(SubGhzRadioPreset));
     item->type = decoder_base->protocol->type;
     item->preset->frequency = preset->frequency;

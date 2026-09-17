@@ -424,7 +424,7 @@ void ac_remote_panel_add_label(
         ac_remote_panel->view,
         ACRemotePanelModel * model,
         {
-            LabelElement* label = LabelList_push_raw(model->labels);
+            LabelElement* label = LabelList_push_back_raw(model->labels);
             label->index = index;
             label->x = x;
             label->y = y;
@@ -445,7 +445,7 @@ void ac_remote_panel_add_icon(
         ac_remote_panel->view,
         ACRemotePanelModel * model,
         {
-            IconElement* icon = IconList_push_raw(model->icons);
+            IconElement* icon = IconList_push_back_raw(model->icons);
             icon->x = x;
             icon->y = y;
             icon->name = icon_name;
