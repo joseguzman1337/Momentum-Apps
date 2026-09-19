@@ -580,6 +580,7 @@ void mfkey(ProgramState *program_state)
 	{
 		dolphin_deed(DolphinDeedNfcKeyAdd);
 	}
+	free(nonce_arr->remaining_nonce_array);
 	free(nonce_arr);
 	keys_dict_free(user_dict);
 	free(keyarray);

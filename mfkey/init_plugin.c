@@ -58,11 +58,74 @@ bool key_already_found_for_nonce_in_dict(KeysDict* dict, MfClassicNonce* nonce) 
     return found;
 }
 
+static bool mfkey32_parse_line(const char* line, MfClassicNonce* nonce) {
+    furi_assert(line);
+    furi_assert(nonce);
+
+    uint32_t sector = 0;
+    char key_type = '\0';
+    char trailing = '\0';
+    MfClassicNonce parsed_nonce = {.attack = mfkey32};
+    int parsed = sscanf(
+        line,
+        "Sec %" SCNu32 " key %c cuid %" SCNx32 " nt0 %" SCNx32 " nr0 %" SCNx32
+        " ar0 %" SCNx32 " nt1 %" SCNx32 " nr1 %" SCNx32 " ar1 %" SCNx32 " %c",
+        &sector,
+        &key_type,
+        &parsed_nonce.uid,
+        &parsed_nonce.nt0,
+        &parsed_nonce.nr0_enc,
+        &parsed_nonce.ar0_enc,
+        &parsed_nonce.nt1,
+        &parsed_nonce.nr1_enc,
+        &parsed_nonce.ar1_enc,
+        &trailing);
+
+    if(parsed != 9 || sector > 39 || (key_type != 'A' && key_type != 'B')) return false;
+
+    parsed_nonce.p64 = prng_successor(parsed_nonce.nt0, 64);
+    parsed_nonce.p64b = prng_successor(parsed_nonce.nt1, 64);
+    parsed_nonce.uid_xor_nt0 = parsed_nonce.uid ^ parsed_nonce.nt0;
+    parsed_nonce.uid_xor_nt1 = parsed_nonce.uid ^ parsed_nonce.nt1;
+    *nonce = parsed_nonce;
+    return true;
+}
+
+static bool mfkey_nonce_array_append(MfClassicNonceArray* nonce_array, MfClassicNonce nonce) {
+    furi_assert(nonce_array);
+
+    const size_t next_count = nonce_array->remaining_nonces + 1;
+    MfClassicNonce* resized =
+        realloc(nonce_array->remaining_nonce_array, sizeof(MfClassicNonce) * next_count);
+    if(!resized) return false;
+
+    nonce_array->remaining_nonce_array = resized;
+    nonce_array->remaining_nonce_array[nonce_array->remaining_nonces] = nonce;
+    nonce_array->remaining_nonces = next_count;
+    nonce_array->total_nonces++;
+    return true;
+}
+
 bool napi_mf_classic_mfkey32_nonces_check_presence() {
     Storage* storage = furi_record_open(RECORD_STORAGE);
+    Stream* stream = buffered_file_stream_alloc(storage);
+    FuriString* line = furi_string_alloc();
+    bool nonces_present = false;
 
-    bool nonces_present = storage_common_stat(storage, MF_CLASSIC_NONCE_PATH, NULL) == FSE_OK;
+    if(buffered_file_stream_open(
+           stream, MF_CLASSIC_NONCE_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        while(stream_read_line(stream, line)) {
+            MfClassicNonce nonce;
+            if(mfkey32_parse_line(furi_string_get_cstr(line), &nonce)) {
+                nonces_present = true;
+                break;
+            }
+        }
+    }
 
+    furi_string_free(line);
+    buffered_file_stream_close(stream);
+    stream_free(stream);
     furi_record_close(RECORD_STORAGE);
 
     return nonces_present;
@@ -152,53 +215,8 @@ bool load_mfkey32_nonces(
                 furi_string_get_cstr(next_line),
                 furi_string_size(next_line));
             */
-            if(!furi_string_start_with_str(next_line, "Sec")) continue;
-            const char* next_line_cstr = furi_string_get_cstr(next_line);
-            MfClassicNonce res = {0};
-            res.attack = mfkey32;
-            int i = 0;
-            char* endptr;
-            for(i = 0; i <= 17; i++) {
-                if(i != 0) {
-                    next_line_cstr = strchr(next_line_cstr, ' ');
-                    if(next_line_cstr) {
-                        next_line_cstr++;
-                    } else {
-                        break;
-                    }
-                }
-                unsigned long value = strtoul(next_line_cstr, &endptr, 16);
-                switch(i) {
-                case 5:
-                    res.uid = value;
-                    break;
-                case 7:
-                    res.nt0 = value;
-                    break;
-                case 9:
-                    res.nr0_enc = value;
-                    break;
-                case 11:
-                    res.ar0_enc = value;
-                    break;
-                case 13:
-                    res.nt1 = value;
-                    break;
-                case 15:
-                    res.nr1_enc = value;
-                    break;
-                case 17:
-                    res.ar1_enc = value;
-                    break;
-                default:
-                    break; // Do nothing
-                }
-                next_line_cstr = endptr;
-            }
-            res.p64 = prng_successor(res.nt0, 64);
-            res.p64b = prng_successor(res.nt1, 64);
-            res.uid_xor_nt0 = res.uid ^ res.nt0;
-            res.uid_xor_nt1 = res.uid ^ res.nt1;
+            MfClassicNonce res;
+            if(!mfkey32_parse_line(furi_string_get_cstr(next_line), &res)) continue;
 
             (program_state->total)++;
             if((system_dict_exists && key_already_found_for_nonce_in_dict(system_dict, &res)) ||
@@ -209,12 +227,10 @@ bool load_mfkey32_nonces(
             }
             //FURI_LOG_I(TAG, "No key found for %8lx %8lx", res.uid, res.ar1_enc);
             // TODO: Refactor
-            nonce_array->remaining_nonce_array = realloc( //-V701
-                nonce_array->remaining_nonce_array,
-                sizeof(MfClassicNonce) * ((nonce_array->remaining_nonces) + 1));
-            nonce_array->remaining_nonces++;
-            nonce_array->remaining_nonce_array[(nonce_array->remaining_nonces) - 1] = res;
-            nonce_array->total_nonces++;
+            if(!mfkey_nonce_array_append(nonce_array, res)) {
+                FURI_LOG_E(TAG, "Cannot grow nonce array");
+                break;
+            }
         }
         furi_string_free(next_line);
         buffered_file_stream_close(nonce_array->stream);
@@ -288,12 +304,10 @@ bool load_nested_nonces(
                 continue;
             }
 
-            nonce_array->remaining_nonce_array = realloc(
-                nonce_array->remaining_nonce_array,
-                sizeof(MfClassicNonce) * (nonce_array->remaining_nonces + 1));
-            nonce_array->remaining_nonce_array[nonce_array->remaining_nonces] = res;
-            nonce_array->remaining_nonces++;
-            nonce_array->total_nonces++;
+            if(!mfkey_nonce_array_append(nonce_array, res)) {
+                FURI_LOG_E(TAG, "Cannot grow nonce array");
+                break;
+            }
             array_loaded = true;
         }
     }
@@ -310,8 +324,8 @@ MfClassicNonceArray* napi_mf_classic_nonce_array_alloc(
     bool system_dict_exists,
     KeysDict* user_dict,
     ProgramState* program_state) {
-    MfClassicNonceArray* nonce_array = malloc(sizeof(MfClassicNonceArray));
-    MfClassicNonce* remaining_nonce_array_init = malloc(sizeof(MfClassicNonce) * 1);
+    MfClassicNonceArray* nonce_array = calloc(1, sizeof(MfClassicNonceArray));
+    MfClassicNonce* remaining_nonce_array_init = calloc(1, sizeof(MfClassicNonce));
     nonce_array->remaining_nonce_array = remaining_nonce_array_init;
     Storage* storage = furi_record_open(RECORD_STORAGE);
     nonce_array->stream = buffered_file_stream_alloc(storage);
@@ -337,6 +351,7 @@ void napi_mf_classic_nonce_array_free(MfClassicNonceArray* nonce_array) {
     // TODO: Already closed?
     buffered_file_stream_close(nonce_array->stream);
     stream_free(nonce_array->stream);
+    free(nonce_array->remaining_nonce_array);
     free(nonce_array);
 }
 
